@@ -1,0 +1,463 @@
+from __future__ import annotations
+from typing import Iterable, Tuple, Union
+import numpy as np
+import torch
+from PIL import Image, ImageOps
+import colorsys
+import cv2
+import torch.nn.functional as F
+from einops import rearrange, repeat
+import torchvision.transforms.functional as T
+import random
+import copy
+from pathlib import Path
+from strenum import StrEnum
+from enum import auto
+import string
+
+
+def is_tensor(obj):
+    return torch.is_tensor(obj)
+
+
+def is_ndarray(obj):
+    return isinstance(obj, np.ndarray)
+
+
+def is_pil(obj):
+    return isinstance(obj, Image.Image)
+
+
+def is_arr(obj):
+    return torch.is_tensor(obj) | isinstance(obj, np.ndarray)
+
+
+class ChannelOrder(StrEnum):
+    HWC = auto()
+    CHW = auto()
+
+
+class ChannelRange(StrEnum):
+    UINT8 = auto()
+    FLOAT = auto()
+    BOOL = auto()
+
+
+class Im:
+    """
+    This class is a helper class to easily convert between formats (PIL/NumPy ndarray/PyTorch Tensor)
+    and perform common operations, regardless of input dtype, batching, normalization, etc.
+
+    We automatically convert all tensors -> ndarrays, but keep PIL images as is.
+    """
+
+    def __init__(self, arr, channel_range: ChannelRange = None, **kwargs):
+        self.arr_device = None
+        self.arr_type: Union[Image.Image, np.ndarray, torch.Tensor]
+        if isinstance(arr, np.ndarray):
+            self.arr = arr
+            self.arr_type = np.ndarray
+        elif isinstance(arr, Image.Image):
+            self.arr = arr.convert('RGB')
+            self.arr_type = Image.Image
+        elif isinstance(arr, torch.Tensor):
+            self.arr = arr
+            self.arr_device = arr.device
+            self.arr_type = torch.Tensor
+        else:
+            raise ValueError('Must be numpy array, pillow image, or torch tensor')
+
+        if is_arr(self.arr):
+            if len(self.arr.shape) == 2:
+                self.arr = self.arr[..., None]
+
+            self.channel_order = ChannelOrder.HWC if self.arr.shape[-1] < min(self.arr.shape[-3:-1]) else ChannelOrder.CHW
+            self.dtype = self.arr.dtype
+            self.shape = self.arr.shape
+
+            if self.channel_order != ChannelOrder.HWC:
+                self.arr = rearrange(self.arr, '... c h w -> ... h w c')
+
+            if len(self.shape) == 3:
+                self.arr_transform = lambda x: rearrange(x, '() h w c -> h w c')
+            elif len(self.shape) == 4:
+                self.arr_transform = lambda x: x
+            elif len(self.shape) >= 5:
+                extra_dims = self.shape[:-3]
+                mapping = {k: v for k, v in zip(string.ascii_uppercase, extra_dims)}
+                self.arr_transform = lambda x: rearrange(x, f'({" ".join(sorted(list(mapping.keys())))}) h w c -> {" ".join(sorted(list(mapping.keys())))} h w c', **mapping)
+            else:
+                raise ValueError('Must be between 3-5 dims')
+
+            self.arr = rearrange(self.arr, '... h w c -> (...) h w c')
+        else:
+            self.channel_order = ChannelOrder.HWC
+            self.shape = (*self.arr.size[::-1], len(self.arr.getbands()))
+            self.dtype = np.array(self.arr).dtype
+            self.arr_transform = lambda x: rearrange(x, 'h w c -> () h w c')
+
+        if channel_range is not None:
+            self.channel_range = channel_range
+        elif self.dtype == np.uint8 or self.dtype == torch.uint8:
+            if self.arr_type == Image.Image or self.arr.max() > 1:
+                self.channel_range = ChannelRange.UINT8
+            else:
+                self.channel_range = ChannelRange.BOOL
+        elif self.dtype == np.float16 or self.dtype == np.float32 or self.dtype == torch.float16 or self.dtype == torch.float32:
+            if -10 <= self.arr.min() <= self.arr.max() <= 10:
+                self.channel_range = ChannelRange.FLOAT
+            else:
+                raise ValueError('Not supported')
+        elif self.dtype == np.bool_ or torch.bool:
+            self.channel_range = ChannelRange.BOOL
+        else:
+            raise ValueError('Invalid Type')
+
+    def __repr__(self):
+        if self.arr_type == np.ndarray:
+            arr_name = 'ndarray'
+        elif self.arr_type == torch.Tensor:
+            arr_name = 'tensor'
+        elif self.arr_type == Image.Image:
+            arr_name = 'PIL Image'
+        else:
+            raise ValueError('Must be numpy array, pillow image, or torch tensor')
+
+        if is_pil(self.arr):
+            shape_str = repr(self.arr)
+        else:
+            shape_str = f'type: {arr_name}, shape: {self.shape}'
+        return f'Im of {shape_str}, device: {self.arr_device}'
+
+    def convert(self, desired_datatype: Union[Image.Image, np.ndarray, torch.Tensor], desired_order: ChannelOrder = ChannelOrder.HWC, desired_range: ChannelRange = ChannelRange.UINT8) -> Im:
+        if self.arr_type != desired_datatype or self.channel_order != desired_order or self.channel_range != desired_range:
+            if desired_datatype == np.ndarray:
+                self = Im(self.get_np(order=desired_order, range=desired_range))
+            elif desired_datatype == Image.Image:
+                self = Im(self.get_pil())
+            elif desired_datatype == torch.Tensor:
+                self = Im(self.get_torch(order=desired_order, range=desired_range))
+
+        return self
+
+    def convert_to_datatype(desired_datatype: Union[Image.Image, np.ndarray, torch.Tensor], desired_order=ChannelOrder.HWC, desired_range=ChannelRange.UINT8):
+        def custom_decorator(func):
+            def wrapper(self, *args):
+                if desired_datatype == Image.Image and is_arr(self.arr) and self.arr.shape[0] > 1:
+                    return Im(np.stack([func(Im(img), *args).get_np() for img in self.get_pil()]))
+                else:
+                    self = self.convert(desired_datatype, desired_order, desired_range)
+                    return func(self, *args)
+            return wrapper
+        return custom_decorator
+
+    def handle_order_transform(self, im, desired_order: ChannelOrder, desired_range: ChannelRange, select_batch=None):
+        if select_batch:
+            im = im[select_batch]
+        else:
+            im = self.arr_transform(im)
+
+        if desired_order == ChannelOrder.CHW:
+            im = rearrange(im, '... h w c -> ... c h w')
+
+        if self.channel_range != desired_range:
+            if is_ndarray(im):
+                if self.channel_range == ChannelRange.FLOAT and desired_range == ChannelRange.UINT8:
+                    im = (im * 255).astype(np.uint8)
+                elif self.channel_range == ChannelRange.UINT8 and desired_range == ChannelRange.FLOAT:
+                    im = (im / 255.0).astype(np.float32)
+                elif self.channel_range == ChannelRange.BOOL and desired_range == ChannelRange.UINT8:
+                    im = (repeat(im[..., 0], "... -> ... c", c=3) * 255).astype(np.uint8)
+                else:
+                    raise ValueError("Not supported")
+            elif is_tensor(im):
+                if self.channel_range == ChannelRange.FLOAT and desired_range == ChannelRange.UINT8:
+                    im = (im * 255).to(torch.uint8)
+                elif self.channel_range == ChannelRange.UINT8 and desired_range == ChannelRange.FLOAT:
+                    im = (im / 255.0).to(torch.float32)
+                elif self.channel_range == ChannelRange.BOOL and desired_range == ChannelRange.UINT8:
+                    im = (repeat(im[..., 0], "... -> ... c", c=3) * 255).to(torch.uint8)
+                elif self.channel_range == ChannelRange.BOOL and desired_range == ChannelRange.FLOAT:
+                    im = repeat(im[..., 0], "... -> ... c", c=3).to(torch.float32)
+                else:
+                    print(self.channel_range, desired_range)
+                    raise ValueError("Not supported")
+
+        return im
+
+    def get_np(self, order=ChannelOrder.HWC, range=ChannelRange.UINT8):
+        if is_pil(self.arr):
+            arr = np.array(self.arr)
+        elif is_tensor(self.arr):
+            arr = self.arr.cpu().detach().numpy()
+        else:
+            arr = self.arr
+
+        arr = self.handle_order_transform(arr, order, range)
+
+        return arr
+
+    def get_torch(self, order=ChannelOrder.CHW, range=ChannelRange.FLOAT):
+        if is_tensor(self.arr):
+            arr = self.arr
+        elif is_pil(self.arr):
+            arr = torch.from_numpy(np.array(self.arr))
+        else:
+            arr = torch.from_numpy(self.arr)
+
+        arr = self.handle_order_transform(arr, order, range)
+        if self.arr_device is not None:
+            arr = arr.to(self.arr_device)
+        return arr
+
+    def get_pil(self):
+        if is_pil(self.arr):
+            return self.arr
+        elif len(self.shape) == 3:
+            return Image.fromarray(self.get_np())
+        else:
+            img = self.convert(np.ndarray, ChannelOrder.HWC, ChannelRange.UINT8).get_np()
+            img = rearrange(img, '... h w c -> (...) h w c')
+            if img.shape[0] == 1:
+                return Image.fromarray(img[0])
+            else:
+                return [Image.fromarray(img[i]) for i in range(img.shape[0])]
+
+    @property
+    def copy(self):
+        return copy.deepcopy(self)
+
+    @property
+    def image_shape(self):
+        return (self.shape[-3], self.shape[-2])
+
+    def load(filepath: Path):
+        return Im(Image.open(filepath))
+
+    # Taken from: https://github.com/GaParmar/clean-fid/blob/9c9dded6758fc4b575c27c4958dbc87b9065ec6e/cleanfid/resize.py#L41
+    @convert_to_datatype(desired_datatype=Image.Image)
+    def resize(self, height, width, resampling_mode=Image.Resampling.LANCZOS):
+        def resize_single_channel(x_np):
+            img = Image.fromarray(x_np.astype(np.float32), mode='F')
+            img = img.resize((width, height), resample=resampling_mode)
+            return np.asarray(img).clip(0, 255).reshape(height, width, 1)
+
+        self.arr = [resize_single_channel(np.array(self.arr)[:, :, idx]) for idx in range(3)]
+        self.arr = np.concatenate(self.arr, axis=2).astype(np.float32) / 255.0
+        return Im(self.arr)
+
+    @convert_to_datatype(desired_datatype=Image.Image)
+    def scale(self, scale):
+        width, height = self.arr.size
+        return self.resize(int(height * scale), int(width * scale))
+
+    @convert_to_datatype(desired_datatype=Image.Image)
+    def scale_to_width(self, new_width):
+        width, height = self.arr.size
+        wpercent = (new_width/float(width))
+        hsize = int((float(height)*float(wpercent)))
+        return self.resize(hsize, new_width)
+
+    @convert_to_datatype(desired_datatype=Image.Image)
+    def scale_to_height(self, new_height):
+        width, height = self.arr.size
+        hpercent = (new_height/float(height))
+        wsize = int((float(width)*float(hpercent)))
+        return self.resize(new_height, wsize)
+
+    def save(self, filepath: Path, filetype='png', optimize=False, quality=None):
+        imgs = self.get_pil()
+        if not isinstance(imgs, list):
+            imgs = [imgs]
+
+        for i, img in enumerate(imgs):
+            filepath = Path(filepath)
+            if len(imgs) > 1:
+                filepath = filepath.with_name(f'{filepath.stem}_{i}{filepath.suffix}')
+
+            if filepath.suffix == '':
+                filepath = filepath.with_suffix(f'.{filetype}')
+
+            flags = {'optimize': True, 'quality': quality if quality else 0.95} if optimize or quality else {}
+            img.save(filepath, **flags)
+
+    @convert_to_datatype(desired_datatype=np.ndarray, desired_order=ChannelOrder.HWC, desired_range=ChannelRange.UINT8)
+    def write_text(self, text: str) -> Im:
+        for i in range(self.arr.shape[0]):
+            text_to_write = text[i] if isinstance(text, list) else text
+            im = cv2.cvtColor(self.arr[i], cv2.COLOR_RGB2BGR)
+            im = cv2.putText(im, text_to_write, (0, im.shape[0] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.002 *
+                             min(self.arr.shape[-3:-1]), (255, 0, 0), max(1, round(min(self.arr.shape[-3:-1]) / 150)), cv2.LINE_AA)
+            self.arr[i] = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
+
+        return self
+
+    def add_border(self, border: int, color: Tuple[int, int, int]):
+        imgs = self.pil
+        if isinstance(imgs, Iterable):
+            imgs = Im(np.stack([Im(ImageOps.expand(ImageOps.crop(img, border=border), border=border, fill=color)).np for img in imgs], axis=0))
+        else:
+            imgs = Im(ImageOps.expand(ImageOps.crop(imgs, border=border), border=border, fill=color))
+        return imgs
+
+    @convert_to_datatype(desired_datatype=torch.Tensor, desired_range=ChannelRange.FLOAT)
+    def normalize(self):
+        dtype = self.arr.dtype
+        mean = [0.4265, 0.4489, 0.4769]
+        std = [0.2053, 0.2206, 0.2578]
+        mean = torch.as_tensor(mean, dtype=dtype, device=self.arr.device)
+        std = torch.as_tensor(std, dtype=dtype, device=self.arr.device)
+        if (std == 0).any():
+            raise ValueError(f"std evaluated to zero after conversion to {dtype}, leading to division by zero.")
+        if mean.ndim == 1:
+            mean = mean.view(-1, 1, 1)
+        if std.ndim == 1:
+            std = std.view(-1, 1, 1)
+
+        self.channel_range = ChannelRange.FLOAT
+        self.arr = rearrange(self.arr, '... h w c -> ... c h w')
+        self.arr = self.arr.sub_(mean).div_(std)
+        self.arr = rearrange(self.arr, '... c h w -> ... h w c')
+        return self
+
+    @convert_to_datatype(desired_datatype=torch.Tensor, desired_range=ChannelRange.FLOAT)
+    def denormalize(self):
+        """Requires B, C, H, W"""
+        mean = [0.4265, 0.4489, 0.4769]
+        std = [0.2053, 0.2206, 0.2578]
+
+        # 3, H, W, B
+        ten = rearrange(self.arr, 'b h w c -> c h w b')
+
+        for t, m, s in zip(ten, mean, std):
+            t.mul_(s).add_(m)
+
+        self.arr = rearrange(torch.clamp(ten.to(torch.float32), 0, 1), 'c h w b -> b h w c')
+        self.channel_range = ChannelRange.FLOAT
+        return self
+
+    pil = property(get_pil)
+    np = property(get_np)
+    torch = property(get_torch)
+
+
+def default_lib_ops():
+    def generic_print(self, arr_values):
+        assert is_arr(self)
+        if is_ndarray(self):
+            lib = np
+            num_elements = lib.prod(self.shape)
+            device = ''
+        else:
+            lib = torch
+            num_elements = lib.prod(torch.tensor(list(self.shape))).item()
+            device = f' device: {self.device},'
+
+        if self.dtype in (np.bool_, torch.bool):
+            specific_data = f' sum: {self.sum()}, unique: {len(lib.unique(self))},'
+        elif (is_ndarray(self) and np.issubdtype(self.dtype, np.integer)) or (is_tensor(self) and not torch.is_floating_point(self)):
+            specific_data = f' unique: {len(lib.unique(self))},'
+        else:
+            specific_data = f' avg: {self.mean():.3f},'
+
+        basic_info = f'shape: {self.shape}, dtype: {self.dtype},{device} num elements: {num_elements} '
+        numerical_info = f'finite: {lib.isfinite(self).all()},{specific_data} min: {self.min():.3f}, max: {self.max().item():.3f}, \n{arr_values}'
+        return basic_info + numerical_info
+
+    normal_repr = torch.Tensor.__repr__
+    torch.Tensor.__repr__ = lambda self: generic_print(self, normal_repr(self))
+    torch.set_printoptions(sci_mode=False, precision=3)
+
+    np.set_string_function(lambda self: generic_print(self, np.ndarray.__repr__(self)), repr=False)
+    np.set_printoptions(suppress=True, precision=3)
+
+    torch.manual_seed(0)
+    random.seed(0)
+    np.random.seed(0)
+
+
+def concat_horizontal(im1: Im, im2: Im):
+    im1, im2 = im1.get_pil(), im2.get_pil()
+    dst = Image.new("RGB", (im1.width + im2.width, max(im2.height, im1.height)))
+    dst.paste(im1, (0, 0))
+    dst.paste(im2, (im1.width, 0))
+    return dst
+
+
+def get_layered_image_from_binary_mask(masks, flip=False):
+    if torch.is_tensor(masks):
+        masks = masks.cpu().detach().numpy()
+    if flip:
+        masks = np.flipud(masks)
+
+    masks = masks.astype(np.bool_)
+
+    colors = np.asarray(list(get_n_distinct_colors(masks.shape[2])))
+    img = np.zeros((*masks.shape[:2], 3))
+    for i in range(masks.shape[2]):
+        img[masks[..., i]] = colors[i]
+
+    return Image.fromarray(img.astype(np.uint8))
+
+
+def get_img_from_binary_masks(masks, flip=False):
+    """H W C"""
+    arr = encode_binary_labels(masks)
+    if flip:
+        arr = np.flipud(arr)
+
+    colors = np.asarray(list(get_n_distinct_colors(2 ** masks.shape[2])))
+    return Image.fromarray(colors[arr].astype(np.uint8))
+
+
+def encode_binary_labels(masks):
+    if torch.is_tensor(masks):
+        masks = masks.cpu().detach().numpy()
+
+    masks = masks.transpose(2, 0, 1)
+    bits = np.power(2, np.arange(len(masks), dtype=np.int32))
+    return (masks.astype(np.int32) * bits.reshape(-1, 1, 1)).sum(0)
+
+
+def get_n_distinct_colors(n):
+    def HSVToRGB(h, s, v):
+        (r, g, b) = colorsys.hsv_to_rgb(h, s, v)
+        return (int(255 * r), int(255 * g), int(255 * b))
+
+    huePartition = 1.0 / (n + 1)
+    return (HSVToRGB(huePartition * value, 1.0, 1.0) for value in range(0, n))
+
+
+colorize_weights = {}
+def colorize(x):
+    if x.shape[0] not in colorize_weights:
+        colorize_weights[x.shape[0]] = torch.randn(3, x.shape[0], 1, 1)
+
+    x = F.conv2d(x, weight=colorize_weights[x.shape[0]])
+    x = (x-x.min())/(x.max()-x.min())
+    return x
+
+
+def square_pad(image, h, w):
+    h_1, w_1 = image.shape[-2:]
+    ratio_f = w / h
+    ratio_1 = w_1 / h_1
+
+    # check if the original and final aspect ratios are the same within a margin
+    if round(ratio_1, 2) != round(ratio_f, 2):
+
+        # padding to preserve aspect ratio
+        hp = int(w_1/ratio_f - h_1)
+        wp = int(ratio_f * h_1 - w_1)
+        if hp > 0 and wp < 0:
+            hp = hp // 2
+            image = T.pad(image, (0, hp, 0, hp), 0, "constant")
+            return T.resize(image, [h, w])
+
+        elif hp < 0 and wp > 0:
+            wp = wp // 2
+            image = T.pad(image, (wp, 0, wp, 0), 0, "constant")
+            return T.resize(image, [h, w])
+
+    else:
+        return T.resize(image, [h, w])
