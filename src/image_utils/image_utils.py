@@ -189,7 +189,7 @@ class Im:
         if is_pil(self.arr):
             arr = np.array(self.arr)
         elif is_tensor(self.arr):
-            arr = self.arr.cpu().detach().numpy()
+            arr = torch_to_numpy(self.arr)
         else:
             arr = self.arr
 
@@ -340,6 +340,11 @@ class Im:
     np = property(get_np)
     torch = property(get_torch)
 
+def torch_to_numpy(arr):
+    if arr.dtype == torch.bfloat16:
+        return arr.float().cpu().detach().numpy()
+    else:
+        return arr.cpu().detach().numpy()
 
 def concat_horizontal(im1: Im, im2: Im):
     im1, im2 = im1.get_pil(), im2.get_pil()
@@ -351,7 +356,7 @@ def concat_horizontal(im1: Im, im2: Im):
 
 def get_layered_image_from_binary_mask(masks, flip=False):
     if torch.is_tensor(masks):
-        masks = masks.cpu().detach().numpy()
+        masks = torch_to_numpy(masks)
     if flip:
         masks = np.flipud(masks)
 
@@ -377,7 +382,7 @@ def get_img_from_binary_masks(masks, flip=False):
 
 def encode_binary_labels(masks):
     if torch.is_tensor(masks):
-        masks = masks.cpu().detach().numpy()
+        masks = torch_to_numpy(masks)
 
     masks = masks.transpose(2, 0, 1)
     bits = np.power(2, np.arange(len(masks), dtype=np.int32))

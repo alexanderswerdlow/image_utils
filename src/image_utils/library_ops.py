@@ -6,6 +6,9 @@ from . import is_tensor, is_ndarray, is_arr
 
 def generic_print(self, arr_values):
     assert is_arr(self)
+
+    if len(self.shape) == 0: return arr_values
+    
     if is_ndarray(self):
         lib = np
         num_elements = lib.prod(self.shape)
@@ -13,7 +16,7 @@ def generic_print(self, arr_values):
     else:
         lib = torch
         num_elements = lib.prod(torch.tensor(list(self.shape))).item()
-        device = f' device: {self.device},'
+        device = self.device.type
 
     if self.dtype in (np.bool_, torch.bool):
         specific_data = f' sum: {self.sum()}, unique: {len(lib.unique(self))},'
@@ -24,7 +27,7 @@ def generic_print(self, arr_values):
 
     shape_str = ",".join([str(self.shape[i]) for i in range(len(self.shape))])
     finite_str = "finite" if lib.isfinite(self).all() else "non-finite"
-    basic_info = f'[{shape_str}] {self.dtype} {self.device.type} {finite_str}'
+    basic_info = f'[{shape_str}] {self.dtype} {device} {finite_str}'
     numerical_info = f'\nelems: {num_elements},{specific_data} min: {self.min():.3f}, max: {self.max().item():.3f}'
     return basic_info + numerical_info + f'\n{arr_values}\n' + basic_info
 
