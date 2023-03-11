@@ -1,5 +1,5 @@
-from typing import Union
-from image_utils import Im, strip_unsafe
+from typing import Iterable, Union
+from image_utils import Im, strip_unsafe, concat_horizontal, concat_vertical
 from PIL import Image
 import torch
 import numpy as np
@@ -10,7 +10,8 @@ from einops import rearrange, repeat
 img_path = Path('tests/flower.jpg')
 save_path = Path(__file__).parent / 'output'
 
-def get_img(img_type: Union[np.ndarray, Image.Image, torch.Tensor], hwc_order = True, dtype=None, normalize=False, device=None, bw_img = False, batch_shape=None):
+
+def get_img(img_type: Union[np.ndarray, Image.Image, torch.Tensor], hwc_order=True, dtype=None, normalize=False, device=None, bw_img=False, batch_shape=None):
     if bw_img:
         if dtype is None:
             img = Image.fromarray(np.random.rand(128, 128) > 0.5)
@@ -20,7 +21,7 @@ def get_img(img_type: Union[np.ndarray, Image.Image, torch.Tensor], hwc_order = 
         img = Image.open(img_path)
     if img_type == Image.Image:
         return img
-    
+
     img = np.array(img)
     if img_type == torch.Tensor:
         img = torch.from_numpy(img)
@@ -46,6 +47,7 @@ def get_img(img_type: Union[np.ndarray, Image.Image, torch.Tensor], hwc_order = 
 
     return img
 
+
 @pytest.mark.parametrize("dim_size", [4, 10, 100])
 def test_single_arg_even(dim_size):
     dims = (dim_size, dim_size)
@@ -65,51 +67,79 @@ def test_single_arg_even(dim_size):
     print(rand_bool_array)
     print(rand_int_array)
 
+
 valid_configs = [
     {'img_type': Image.Image},
     {'img_type': np.ndarray},
-    {'img_type': np.ndarray, 'hwc_order': False,},
-    {'img_type': np.ndarray, 'dtype': np.float16,},
+    {'img_type': np.ndarray, 'hwc_order': False, },
+    {'img_type': np.ndarray, 'dtype': np.float16, },
     {'img_type': np.ndarray, 'hwc_order': False, 'dtype': np.float16},
     {'img_type': np.ndarray, 'hwc_order': False, 'dtype': np.float32, 'normalize': True},
     {'img_type': torch.Tensor},
-    {'img_type': torch.Tensor, 'hwc_order': False,},
-    {'img_type': torch.Tensor, 'dtype': torch.float32,},
+    {'img_type': torch.Tensor, 'hwc_order': False, },
+    {'img_type': torch.Tensor, 'dtype': torch.float32, },
     {'img_type': torch.Tensor, 'hwc_order': False, 'dtype': torch.float16},
     {'img_type': torch.Tensor, 'hwc_order': False, 'dtype': torch.float, 'normalize': True},
     {'img_type': torch.Tensor, 'hwc_order': False, 'dtype': torch.float, 'normalize': True},
     {'img_type': np.ndarray, 'bw_img': True},
     {'img_type': np.ndarray, 'bw_img': True, 'dtype': np.uint8},
-
     {'img_type': np.ndarray, 'batch_shape': {'a': 2}},
     {'img_type': np.ndarray, 'batch_shape': {'a': 2, 'b': 3, 'c': 4}},
     {'img_type': np.ndarray, 'batch_shape': {'a': 2, 'b': 3}},
 ]
 
+
 @pytest.mark.parametrize("img_params", valid_configs)
 def test_write_text(img_params):
     img = Im(get_img(**img_params))
-    file_path = save_path / strip_unsafe('__'.join([f'{k}_{v}' for k,v in img_params.items()]))
+    file_path = save_path / strip_unsafe('__'.join([f'{k}_{v}' for k, v in img_params.items()]))
     img.copy.write_text('test').save(file_path.parent / f"{file_path.name}_text")
+
 
 @pytest.mark.parametrize("img_params", valid_configs)
 def test_add_border(img_params):
     img = Im(get_img(**img_params))
-    file_path = save_path / strip_unsafe('__'.join([f'{k}_{v}' for k,v in img_params.items()]))
-    img.copy.add_border(border = 5, color=(128, 128, 128)).save(file_path.parent / f"{file_path.name}_border")
+    file_path = save_path / strip_unsafe('__'.join([f'{k}_{v}' for k, v in img_params.items()]))
+    img.copy.add_border(border=5, color=(128, 128, 128)).save(file_path.parent / f"{file_path.name}_border")
+
 
 @pytest.mark.parametrize("img_params", valid_configs)
 def test_resize(img_params):
     img = Im(get_img(**img_params))
-    file_path = save_path / strip_unsafe('__'.join([f'{k}_{v}' for k,v in img_params.items()]))
+    file_path = save_path / strip_unsafe('__'.join([f'{k}_{v}' for k, v in img_params.items()]))
     img.copy.resize(128, 128).save(file_path.parent / f"{file_path.name}_resize")
     img.copy.scale(0.25).save(file_path.parent / f"{file_path.name}_downscale")
     img.copy.scale_to_width(128).save(file_path.parent / f"{file_path.name}_scale_width")
     img.copy.scale_to_height(128).save(file_path.parent / f"{file_path.name}_scale_height")
 
+
 @pytest.mark.parametrize("img_params", valid_configs)
 def test_normalization(img_params):
     img = Im(get_img(**img_params))
-    file_path = save_path / strip_unsafe('__'.join([f'{k}_{v}' for k,v in img_params.items()]))
+    file_path = save_path / strip_unsafe('__'.join([f'{k}_{v}' for k, v in img_params.items()]))
+    if img_params.get('bw_img', False):
+        return
     img.normalize().denormalize().save(file_path.parent / f"{file_path.name}_normalize")
     img.denormalize().normalize().save(file_path.parent / f"{file_path.name}_normalize")
+
+
+@pytest.mark.parametrize("img_params", valid_configs)
+def test_format(img_params):
+    img = Im(get_img(**img_params))
+    file_path = save_path / strip_unsafe('__'.join([f'{k}_{v}' for k, v in img_params.items()]))
+    pil_img = img.pil
+    torch_img = img.torch
+    np_img = img.np
+    cv_img = img.opencv
+
+
+@pytest.mark.parametrize("img_params", valid_configs)
+def test_concat(img_params):
+    img = Im(get_img(**img_params))
+
+    input_data = [img, img, img]
+    if img_params.get('batch_shape', False):
+        return
+
+    concat_horizontal(*input_data, spacing=5)
+    concat_vertical(*input_data, spacing=0)

@@ -4,6 +4,7 @@ import random
 import string
 from datetime import datetime
 import pickle
+from image_utils import Im
 
 
 def delete_create_folder(path: Path):
@@ -31,3 +32,25 @@ def save_pickle(file_path: Path):
 def load_pickle(obj, file_path: Path):
     with open(file_path, "wb") as f:
         pickle.dump(obj, f)
+
+
+def get_file_list(**kwargs): [f for f in get_files(**kwargs)]
+
+
+def get_files(path: Path, recursive: bool = False, return_folders: bool = False, allowed_extensions=None):
+    path = Path(path)
+
+    if allowed_extensions or recursive:
+        glob_str = "*" if allowed_extensions is None else f"*.[{''.join(allowed_extensions)}]*"
+        iterator = path.rglob(glob_str) if recursive else path.glob(glob_str)
+    else:
+        iterator = path.iterdir()
+
+    for file in iterator:
+        if file.is_file() or return_folders:
+            yield file
+
+
+def get_images(recursive: bool = False, allowed_extensions=[".png", ".jpg", ".jpeg"]):
+    for file in get_files(recursive=recursive, allowed_extensions=allowed_extensions):
+        yield Im.open(file)

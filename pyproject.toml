@@ -19,14 +19,17 @@ classifiers = [
 dependencies = [
     "opencv-python>=4.5",
     "numpy>=1.22",
-    "scipy>=1.7",
     "torch>=1.12",
     "torchvision>=0.13",
     "pillow>=9.0.0",
-    "matplotlib>=3.6.0",
     "einops>=0.6.0",
     "StrEnum>=0.4.9",
+    ""
 ]
+
+[project.optional-dependencies]
+VIDEO = ["av>=10.0.0"]
+PROC = ["joblib>=1.2.0"]
 
 [project.urls]
 Homepage = "https://github.com/alexanderswerdlow/image_utils"

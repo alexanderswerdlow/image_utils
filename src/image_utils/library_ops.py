@@ -7,8 +7,9 @@ from . import is_tensor, is_ndarray, is_arr
 def generic_print(self, arr_values):
     assert is_arr(self)
 
-    if len(self.shape) == 0: return arr_values
-    
+    if len(self.shape) == 0:
+        return arr_values
+
     if is_ndarray(self):
         lib = np
         num_elements = lib.prod(self.shape)

@@ -14,6 +14,7 @@ from pathlib import Path
 from strenum import StrEnum
 from enum import auto
 import string
+from image_utils.file_utils import get_date_time_str
 
 
 def is_tensor(obj):
@@ -48,20 +49,21 @@ class Im:
     This class is a helper class to easily convert between formats (PIL/NumPy ndarray/PyTorch Tensor)
     and perform common operations, regardless of input dtype, batching, normalization, etc.
 
-    We automatically convert all tensors -> ndarrays, but keep PIL images as is.
+    Note: Be careful when using this class directly as part of a training pipeline. Many operations will cause the underlying data to convert between formats (e.g., Tensor -> Pillow) and move the data back to system memory and/or incur loss of precision (e.g., float -> uint8)
     """
+
+    default_normalize_mean = [0.4265, 0.4489, 0.4769]
+    default_normalize_std = [0.2053, 0.2206, 0.2578]
 
     def __init__(self, arr, channel_range: ChannelRange = None, **kwargs):
         self.arr_device = None
+        self.arr = arr
         self.arr_type: Union[Image.Image, np.ndarray, torch.Tensor]
         if isinstance(arr, np.ndarray):
-            self.arr = arr
             self.arr_type = np.ndarray
         elif isinstance(arr, Image.Image):
-            self.arr = arr.convert('RGB')
             self.arr_type = Image.Image
         elif isinstance(arr, torch.Tensor):
-            self.arr = arr
             self.arr_device = arr.device
             self.arr_type = torch.Tensor
         else:
@@ -94,7 +96,7 @@ class Im:
             self.channel_order = ChannelOrder.HWC
             self.shape = (*self.arr.size[::-1], len(self.arr.getbands()))
             self.dtype = np.array(self.arr).dtype
-            self.arr_transform = lambda x: rearrange(x, 'h w c -> () h w c')
+            self.arr_transform = lambda x: rearrange(x, 'h w c -> h w c')
 
         if channel_range is not None:
             self.channel_range = channel_range
@@ -185,9 +187,9 @@ class Im:
 
         return im
 
-    def get_np(self, order=ChannelOrder.HWC, range=ChannelRange.UINT8):
+    def get_np(self, order=ChannelOrder.HWC, range=ChannelRange.UINT8) -> np.ndarray:
         if is_pil(self.arr):
-            arr = np.array(self.arr)
+            arr = pil_to_numpy(self.arr)
         elif is_tensor(self.arr):
             arr = torch_to_numpy(self.arr)
         else:
@@ -197,11 +199,11 @@ class Im:
 
         return arr
 
-    def get_torch(self, order=ChannelOrder.CHW, range=ChannelRange.FLOAT):
+    def get_torch(self, order=ChannelOrder.CHW, range=ChannelRange.FLOAT) -> torch.Tensor:
         if is_tensor(self.arr):
             arr = self.arr
         elif is_pil(self.arr):
-            arr = torch.from_numpy(np.array(self.arr))
+            arr = torch.from_numpy(pil_to_numpy(self.arr))
         else:
             arr = torch.from_numpy(self.arr)
 
@@ -210,7 +212,7 @@ class Im:
             arr = arr.to(self.arr_device)
         return arr
 
-    def get_pil(self):
+    def get_pil(self) -> Image.Image:
         if is_pil(self.arr):
             return self.arr
         elif len(self.shape) == 3:
@@ -231,8 +233,13 @@ class Im:
     def image_shape(self):
         return (self.shape[-3], self.shape[-2])
 
-    def load(filepath: Path):
-        return Im(Image.open(filepath))
+    def open(filepath: Path, use_imageio=False) -> Im:
+        if use_imageio:
+            import imageio.v3 as iio
+            img = iio.imread(filepath)
+        else:
+            img = Image.open(filepath)
+        return Im(img)
 
     # Taken from: https://github.com/GaParmar/clean-fid/blob/9c9dded6758fc4b575c27c4958dbc87b9065ec6e/cleanfid/resize.py#L41
     @convert_to_datatype(desired_datatype=Image.Image)
@@ -247,39 +254,48 @@ class Im:
         return Im(self.arr)
 
     @convert_to_datatype(desired_datatype=Image.Image)
-    def scale(self, scale):
+    def scale(self, scale) -> Im:
         width, height = self.arr.size
         return self.resize(int(height * scale), int(width * scale))
 
     @convert_to_datatype(desired_datatype=Image.Image)
-    def scale_to_width(self, new_width):
+    def scale_to_width(self, new_width) -> Im:
         width, height = self.arr.size
         wpercent = (new_width/float(width))
         hsize = int((float(height)*float(wpercent)))
         return self.resize(hsize, new_width)
 
     @convert_to_datatype(desired_datatype=Image.Image)
-    def scale_to_height(self, new_height):
+    def scale_to_height(self, new_height) -> Im:
         width, height = self.arr.size
         hpercent = (new_height/float(height))
         wsize = int((float(width)*float(hpercent)))
         return self.resize(new_height, wsize)
 
-    def save(self, filepath: Path, filetype='png', optimize=False, quality=None):
-        imgs = self.get_pil()
-        if not isinstance(imgs, list):
-            imgs = [imgs]
+    def save(self, filepath: Path = None, filetype='png', optimize=False, quality=None):
+        img = self.get_torch()
 
-        for i, img in enumerate(imgs):
-            filepath = Path(filepath)
-            if len(imgs) > 1:
-                filepath = filepath.with_name(f'{filepath.stem}_{i}{filepath.suffix}')
+        if filepath is None:
+            filepath = get_date_time_str()
 
-            if filepath.suffix == '':
-                filepath = filepath.with_suffix(f'.{filetype}')
+        filepath = Path(filepath)
+        if filepath.suffix == '':
+            filepath = filepath.with_suffix(f'.{filetype}')
 
-            flags = {'optimize': True, 'quality': quality if quality else 0.95} if optimize or quality else {}
-            img.save(filepath, **flags)
+        if len(filepath.parents) == 1:
+            filepath = Path('output') / filepath
+            filepath.mkdir(parents=True, exist_ok=True)
+
+        if len(img.shape) > 3:
+            from torchvision import utils
+            img = rearrange(img, '... h w c -> (...) h w c')
+            img = utils.make_grid(img)
+            img = Im(img).get_pil()
+        else:
+            img = self.get_pil()
+
+        flags = {'optimize': True, 'quality': quality if quality else 0.95} if optimize or quality else {}
+        img.save(filepath, **flags)
 
     @convert_to_datatype(desired_datatype=np.ndarray, desired_order=ChannelOrder.HWC, desired_range=ChannelRange.UINT8)
     def write_text(self, text: str) -> Im:
@@ -300,58 +316,84 @@ class Im:
             imgs = Im(ImageOps.expand(ImageOps.crop(imgs, border=border), border=border, fill=color))
         return imgs
 
-    @convert_to_datatype(desired_datatype=torch.Tensor, desired_range=ChannelRange.FLOAT)
-    def normalize(self):
-        dtype = self.arr.dtype
-        mean = [0.4265, 0.4489, 0.4769]
-        std = [0.2053, 0.2206, 0.2578]
-        mean = torch.as_tensor(mean, dtype=dtype, device=self.arr.device)
-        std = torch.as_tensor(std, dtype=dtype, device=self.arr.device)
-        if (std == 0).any():
-            raise ValueError(f"std evaluated to zero after conversion to {dtype}, leading to division by zero.")
-        if mean.ndim == 1:
-            mean = mean.view(-1, 1, 1)
-        if std.ndim == 1:
-            std = std.view(-1, 1, 1)
+    def normalize_setup(self, mean=default_normalize_mean, std=default_normalize_std):
+        if self.arr_type == np.ndarray or self.arr_type == Image.Image:
+            self = Im(self.get_np(ChannelOrder.HWC, ChannelRange.FLOAT))
+            if not isinstance(mean, np.ndarray):
+                mean = np.array(mean).astype(self.dtype)
+            if not isinstance(std, np.ndarray):
+                std = np.array(std).astype(self.dtype)
+        elif self.arr_type == torch.Tensor:
+            self = Im(self.get_torch(ChannelOrder.HWC, ChannelRange.FLOAT))
+            if not isinstance(mean, torch.Tensor):
+                mean = torch.tensor(mean)
+            if not isinstance(std, torch.Tensor):
+                std = torch.tensor(std)
+        return self, mean, std
 
-        self.channel_range = ChannelRange.FLOAT
-        self.arr = rearrange(self.arr, '... h w c -> ... c h w')
-        self.arr = self.arr.sub_(mean).div_(std)
-        self.arr = rearrange(self.arr, '... c h w -> ... h w c')
+    def normalize(self, **kwargs) -> Im:
+        self, mean, std = self.normalize_setup(**kwargs)
+        self.arr = (self.arr - mean) / std
         return self
 
-    @convert_to_datatype(desired_datatype=torch.Tensor, desired_range=ChannelRange.FLOAT)
-    def denormalize(self):
-        """Requires B, C, H, W"""
-        mean = [0.4265, 0.4489, 0.4769]
-        std = [0.2053, 0.2206, 0.2578]
-
-        # 3, H, W, B
-        ten = rearrange(self.arr, 'b h w c -> c h w b')
-
-        for t, m, s in zip(ten, mean, std):
-            t.mul_(s).add_(m)
-
-        self.arr = rearrange(torch.clamp(ten.to(torch.float32), 0, 1), 'c h w b -> b h w c')
-        self.channel_range = ChannelRange.FLOAT
+    def denormalize(self, **kwargs) -> Im:
+        self, mean, std = self.normalize_setup(**kwargs)
+        self.arr = (self.arr * std) + mean
         return self
+
+    @convert_to_datatype(desired_datatype=np.ndarray, desired_order=ChannelOrder.HWC, desired_range=ChannelRange.UINT8)
+    def get_opencv(self):
+        return self.arr
+
+    @convert_to_datatype(desired_datatype=np.ndarray, desired_order=ChannelOrder.HWC, desired_range=ChannelRange.UINT8)
+    def convert_opencv_color(self, color: int):
+        """E.g.,cv2.COLOR_RGB2BGR """
+        self.arr = cv2.cvtColor(self.arr, color)
 
     pil = property(get_pil)
     np = property(get_np)
     torch = property(get_torch)
+    opencv = property(get_opencv)
+
 
 def torch_to_numpy(arr):
-    if arr.dtype == torch.bfloat16:
+    if arr.dtype == torch.bfloat16 or arr.dtype == torch.float16:
         return arr.float().cpu().detach().numpy()
     else:
         return arr.cpu().detach().numpy()
 
-def concat_horizontal(im1: Im, im2: Im):
+
+def pil_to_numpy(arr):
+    return np.array(arr.convert('RGB'))
+
+
+def concat_variable(concat_func, *args, **kwargs) -> Im:
+    output_img = None
+    for img in args:
+        if output_img is None:
+            output_img = img
+        else:
+            output_img = concat_func(output_img, img, **kwargs)
+
+
+def concat_vertical(*args, **kwargs) -> Im: concat_variable(concat_vertical_, *args, **kwargs)
+def concat_horizontal(*args, **kwargs) -> Im: concat_variable(concat_horizontal_, *args, **kwargs)
+
+
+def concat_horizontal_(im1: Im, im2: Im, spacing=0) -> Im:
     im1, im2 = im1.get_pil(), im2.get_pil()
-    dst = Image.new("RGB", (im1.width + im2.width, max(im2.height, im1.height)))
+    dst = Image.new("RGBA", (im1.width + spacing + im2.width, max(im2.height, im1.height)))
     dst.paste(im1, (0, 0))
-    dst.paste(im2, (im1.width, 0))
-    return dst
+    dst.paste(im2, (spacing + im1.width, 0))
+    return Im(dst)
+
+
+def concat_vertical_(im1: Im, im2: Im, spacing=0) -> Im:
+    im1, im2 = im1.get_pil(), im2.get_pil()
+    dst = Image.new('RGBA', (im1.width, im1.height + spacing + im2.height))
+    dst.paste(im1, (0, 0))
+    dst.paste(im2, (0, spacing + im1.height))
+    return Im(dst)
 
 
 def get_layered_image_from_binary_mask(masks, flip=False):
