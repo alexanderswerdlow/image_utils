@@ -14,7 +14,6 @@ from pathlib import Path
 from strenum import StrEnum
 from enum import auto
 import string
-from image_utils.file_utils import get_date_time_str
 
 
 def is_tensor(obj):
@@ -276,6 +275,7 @@ class Im:
         img = self.get_torch()
 
         if filepath is None:
+            from image_utils.file_utils import get_date_time_str
             filepath = get_date_time_str()
 
         filepath = Path(filepath)
