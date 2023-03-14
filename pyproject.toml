@@ -24,11 +24,10 @@ dependencies = [
     "pillow>=9.0.0",
     "einops>=0.6.0",
     "StrEnum>=0.4.9",
-    ""
 ]
 
 [project.optional-dependencies]
-VIDEO = ["av>=10.0.0"]
+VIDEO = ["av>=10.0.0", "imageio[ffmpeg]"]
 PROC = ["joblib>=1.2.0"]
 
 [project.urls]
