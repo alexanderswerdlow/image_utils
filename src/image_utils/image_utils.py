@@ -104,7 +104,7 @@ class Im:
                 self.channel_range = ChannelRange.UINT8
             else:
                 self.channel_range = ChannelRange.BOOL
-        elif self.dtype == np.float16 or self.dtype == np.float32 or self.dtype == torch.float16 or self.dtype == torch.float32:
+        elif self.dtype == np.float16 or self.dtype == np.float32 or self.dtype == torch.float16 or self.dtype == torch.bfloat16 or self.dtype == torch.float32:
             if -10 <= self.arr.min() <= self.arr.max() <= 10:
                 self.channel_range = ChannelRange.FLOAT
             else:

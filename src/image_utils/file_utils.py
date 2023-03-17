@@ -21,7 +21,7 @@ def get_date_time_str():
 
 
 def strip_unsafe(filename):
-    return "".join([c for c in filename if c.isalpha() or c.isdigit() or c == '']).rstrip()
+    return "".join([c for c in filename if c.isalpha() or c.isdigit() or c == '' or c == '_']).rstrip()
 
 
 def save_pickle(file_path: Path):

@@ -79,8 +79,10 @@ valid_configs = [
     {'img_type': torch.Tensor, 'hwc_order': False, },
     {'img_type': torch.Tensor, 'dtype': torch.float32, },
     {'img_type': torch.Tensor, 'hwc_order': False, 'dtype': torch.float16},
+    {'img_type': torch.Tensor, 'hwc_order': False, 'dtype': torch.bfloat16},
     {'img_type': torch.Tensor, 'hwc_order': False, 'dtype': torch.float, 'normalize': True},
-    {'img_type': torch.Tensor, 'hwc_order': False, 'dtype': torch.float, 'normalize': True},
+    {'img_type': torch.Tensor, 'hwc_order': False, 'dtype': torch.float16, 'normalize': True},
+    {'img_type': torch.Tensor, 'hwc_order': False, 'dtype': torch.bfloat16, 'normalize': True},
     {'img_type': np.ndarray, 'bw_img': True},
     {'img_type': np.ndarray, 'bw_img': True, 'dtype': np.uint8},
     {'img_type': np.ndarray, 'batch_shape': {'a': 2}},
@@ -88,45 +90,48 @@ valid_configs = [
     {'img_type': np.ndarray, 'batch_shape': {'a': 2, 'b': 3}},
 ]
 
+def get_file_path(img_params: dict, name: str):
+    file_path = save_path / strip_unsafe('__'.join([f'{k}_{v}' for k, v in img_params.items()]))
+    return file_path.parent / f"{file_path.name}_{name}"
+
+@pytest.mark.parametrize("img_params", valid_configs)
+def test_save(img_params):
+    img = Im(get_img(**img_params))
+    img.copy.save(get_file_path(img_params, 'save'))
 
 @pytest.mark.parametrize("img_params", valid_configs)
 def test_write_text(img_params):
     img = Im(get_img(**img_params))
-    file_path = save_path / strip_unsafe('__'.join([f'{k}_{v}' for k, v in img_params.items()]))
-    img.copy.write_text('test').save(file_path.parent / f"{file_path.name}_text")
+    img.copy.write_text('test').save(get_file_path(img_params, 'text'))
 
 
 @pytest.mark.parametrize("img_params", valid_configs)
 def test_add_border(img_params):
     img = Im(get_img(**img_params))
-    file_path = save_path / strip_unsafe('__'.join([f'{k}_{v}' for k, v in img_params.items()]))
-    img.copy.add_border(border=5, color=(128, 128, 128)).save(file_path.parent / f"{file_path.name}_border")
+    img.copy.add_border(border=5, color=(128, 128, 128)).save(get_file_path(img_params, 'border'))
 
 
 @pytest.mark.parametrize("img_params", valid_configs)
 def test_resize(img_params):
     img = Im(get_img(**img_params))
-    file_path = save_path / strip_unsafe('__'.join([f'{k}_{v}' for k, v in img_params.items()]))
-    img.copy.resize(128, 128).save(file_path.parent / f"{file_path.name}_resize")
-    img.copy.scale(0.25).save(file_path.parent / f"{file_path.name}_downscale")
-    img.copy.scale_to_width(128).save(file_path.parent / f"{file_path.name}_scale_width")
-    img.copy.scale_to_height(128).save(file_path.parent / f"{file_path.name}_scale_height")
+    img.copy.resize(128, 128).save(get_file_path(img_params, 'resize'))
+    img.copy.scale(0.25).save(get_file_path(img_params, 'downscale'))
+    img.copy.scale_to_width(128).save(get_file_path(img_params, 'scale_width'))
+    img.copy.scale_to_height(128).save(get_file_path(img_params, 'scale_height'))
 
 
 @pytest.mark.parametrize("img_params", valid_configs)
 def test_normalization(img_params):
     img = Im(get_img(**img_params))
-    file_path = save_path / strip_unsafe('__'.join([f'{k}_{v}' for k, v in img_params.items()]))
     if img_params.get('bw_img', False):
         return
-    img.normalize().denormalize().save(file_path.parent / f"{file_path.name}_normalize")
-    img.denormalize().normalize().save(file_path.parent / f"{file_path.name}_normalize")
+    img.normalize().denormalize().save(get_file_path(img_params, 'normalize0'))
+    img.denormalize().normalize().save(get_file_path(img_params, 'normalize1'))
 
 
 @pytest.mark.parametrize("img_params", valid_configs)
 def test_format(img_params):
     img = Im(get_img(**img_params))
-    file_path = save_path / strip_unsafe('__'.join([f'{k}_{v}' for k, v in img_params.items()]))
     pil_img = img.pil
     torch_img = img.torch
     np_img = img.np
