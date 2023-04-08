@@ -30,15 +30,22 @@ def generic_print(self, arr_values):
     finite_str = "finite" if lib.isfinite(self).all() else "non-finite"
     basic_info = f'[{shape_str}] {self.dtype} {device} {finite_str}'
     numerical_info = f'\nelems: {num_elements},{specific_data} min: {self.min():.3f}, max: {self.max().item():.3f}'
-    return basic_info + numerical_info + f'\n{arr_values}\n' + basic_info
+
+    def get_first_and_last_lines(text):
+        lines = text.split('\n')
+        first_lines = "\n".join(lines[:2])
+        end_lines = "\n".join(lines[-2:])
+        return f'{first_lines} ...\n{end_lines}'
+
+    return basic_info + numerical_info + f'\n{get_first_and_last_lines(arr_values)}\n' + basic_info
 
 
+torch.set_printoptions(sci_mode=False, precision=3, threshold=10, edgeitems=2, linewidth=120)
 normal_repr = torch.Tensor.__repr__
 torch.Tensor.__repr__ = lambda self: generic_print(self, normal_repr(self))
-torch.set_printoptions(sci_mode=False, precision=3)
 
+np.set_printoptions(suppress=True, precision=3, threshold=10, edgeitems=2, linewidth=120)
 np.set_string_function(lambda self: generic_print(self, np.ndarray.__repr__(self)), repr=False)
-np.set_printoptions(suppress=True, precision=3)
 
 
 def set_random_seeds():

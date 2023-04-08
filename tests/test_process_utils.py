@@ -2,7 +2,7 @@ from image_utils.process_utils import parallelize
 from image_utils.file_utils import get_rand_hex
 import pytest
 from pathlib import Path
-from
+import numpy as np
 
 img_path = Path('tests/flower.jpg')
 save_path = Path(__file__).parent / 'output'
@@ -15,8 +15,8 @@ save_path = Path(__file__).parent / 'output'
 #     time.sleep(1)
 #     return data[column] + 1
 
-def test_func():
-    pass
+def do_func(lst, idx, arr):
+    print(len(lst), arr.shape)
 
 
 def get_test_list(list_size):
@@ -24,7 +24,9 @@ def get_test_list(list_size):
 
 
 @pytest.mark.parametrize("num_processes", [1, 2, 10])
-@pytest.mark.parametrize("list_size", [1, 10, 10000])
+@pytest.mark.parametrize("list_size", [1, 10, 1000])
 def test_parallelize(num_processes, list_size):
     test_list = get_test_list(list_size)
-    test_parallel = parallelize(test_func, num_processes=num_processes, shuffle=False)(test_list)
+    rng = np.random.RandomState(42)
+    test_arr = rng.randn(int(1e4), 4)
+    test_parallel = parallelize(do_func, num_processes=num_processes, shuffle=False, use_joblib=True)(test_list, arr=test_arr)

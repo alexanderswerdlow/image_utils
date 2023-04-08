@@ -25,7 +25,7 @@ def split_range(a, n):
     return (a[i * k + min(i, m): (i + 1) * k + min(i + 1, m)] for i in range(n))
 
 
-def parallelize(func=None, num_processes=1, shuffle=False, custom_chunking=False, use_joblib=False, **kwargs):
+def parallelize(func=None, num_processes=1, shuffle=False, custom_chunking=False, use_joblib=False):
     def wrapper(iterable, **kwargs):
         if use_joblib:
             executor = Parallel(n_jobs=num_processes, max_nbytes=1e6)
