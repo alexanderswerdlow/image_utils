@@ -329,6 +329,9 @@ class Im:
                 mean = torch.tensor(mean)
             if not isinstance(std, torch.Tensor):
                 std = torch.tensor(std)
+
+            mean, std = mean.to(device=self.arr_device), std.to(device=self.arr_device)
+            
         return self, mean, std
 
     def normalize(self, **kwargs) -> Im:
