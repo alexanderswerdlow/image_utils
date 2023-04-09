@@ -32,12 +32,15 @@ def generic_print(self, arr_values):
     numerical_info = f'\nelems: {num_elements},{specific_data} min: {self.min():.3f}, max: {self.max().item():.3f}'
 
     def get_first_and_last_lines(text):
-        lines = text.split('\n')
-        first_lines = "\n".join(lines[:2])
-        end_lines = "\n".join(lines[-2:])
-        return f'{first_lines} ...\n{end_lines}'
+        if text.count('\n') > 4:
+            lines = text.split('\n')
+            first_lines = "\n".join(lines[:2])
+            end_lines = "\n".join(lines[-2:])
+            return f'{first_lines} ...\n{end_lines}'
+        else:
+            return text
 
-    return basic_info + numerical_info + f'\n{get_first_and_last_lines(arr_values)}\n' + basic_info
+    return basic_info + numerical_info + f'\n{arr_values}\n' + basic_info
 
 
 torch.set_printoptions(sci_mode=False, precision=3, threshold=10, edgeitems=2, linewidth=120)
