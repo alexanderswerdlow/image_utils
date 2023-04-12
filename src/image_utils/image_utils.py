@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Iterable, Tuple, Union
+from typing import Iterable, Optional, Tuple, Union
 import numpy as np
 import torch
 from PIL import Image, ImageOps
@@ -129,6 +129,14 @@ class Im:
         else:
             shape_str = f'type: {arr_name}, shape: {self.shape}'
         return f'Im of {shape_str}, device: {self.arr_device}'
+
+    @property
+    def height(self):
+        return self.shape[-2]
+    
+    @property
+    def width(self):
+        return self.shape[-1]
 
     def convert(self, desired_datatype: Union[Image.Image, np.ndarray, torch.Tensor], desired_order: ChannelOrder = ChannelOrder.HWC, desired_range: ChannelRange = ChannelRange.UINT8) -> Im:
         if self.arr_type != desired_datatype or self.channel_order != desired_order or self.channel_range != desired_range:
@@ -339,9 +347,13 @@ class Im:
         self.arr = (self.arr - mean) / std
         return self
 
-    def denormalize(self, **kwargs) -> Im:
+    def denormalize(self, clamp: Union[bool, tuple(float, float)] = (0, 1.0), **kwargs) -> Im:
         self, mean, std = self.normalize_setup(**kwargs)
         self.arr = (self.arr * std) + mean
+        if self.arr_type == np.ndarray:
+            self.arr = self.arr.clip(*clamp) if clamp else self.arr
+        elif self.arr_type == torch.Tensor:
+            self.arr = self.arr.clamp(*clamp) if clamp else self.arr
         return self
 
     @convert_to_datatype(desired_datatype=np.ndarray, desired_order=ChannelOrder.HWC, desired_range=ChannelRange.UINT8)
@@ -377,26 +389,34 @@ def concat_variable(concat_func, *args, **kwargs) -> Im:
             output_img = img
         else:
             output_img = concat_func(output_img, img, **kwargs)
+            
+    return output_img
 
 
-def concat_vertical(*args, **kwargs) -> Im: concat_variable(concat_vertical_, *args, **kwargs)
-def concat_horizontal(*args, **kwargs) -> Im: concat_variable(concat_horizontal_, *args, **kwargs)
+def concat_vertical(*args, **kwargs) -> Im: return concat_variable(concat_vertical_, *args, **kwargs)
+def concat_horizontal(*args, **kwargs) -> Im: return concat_variable(concat_horizontal_, *args, **kwargs)
 
 
 def concat_horizontal_(im1: Im, im2: Im, spacing=0) -> Im:
-    im1, im2 = im1.get_pil(), im2.get_pil()
-    dst = Image.new("RGBA", (im1.width + spacing + im2.width, max(im2.height, im1.height)))
-    dst.paste(im1, (0, 0))
-    dst.paste(im2, (spacing + im1.width, 0))
-    return Im(dst)
+    if im1.height == im2.height and im1.arr_type == torch.Tensor and im2.arr_type == torch.Tensor:
+        return Im(torch.cat((im1.get_torch(order=ChannelOrder.CHW), im2.get_torch(order=ChannelOrder.CHW)), dim=-1))
+    else:
+        im1, im2 = im1.get_pil(), im2.get_pil()
+        dst = Image.new("RGBA", (im1.width + spacing + im2.width, max(im2.height, im1.height)))
+        dst.paste(im1, (0, 0))
+        dst.paste(im2, (spacing + im1.width, 0))
+        return Im(dst)
 
 
 def concat_vertical_(im1: Im, im2: Im, spacing=0) -> Im:
-    im1, im2 = im1.get_pil(), im2.get_pil()
-    dst = Image.new('RGBA', (im1.width, im1.height + spacing + im2.height))
-    dst.paste(im1, (0, 0))
-    dst.paste(im2, (0, spacing + im1.height))
-    return Im(dst)
+    if im1.width == im2.width and im1.arr_type == torch.Tensor and im2.arr_type == torch.Tensor:
+        return Im(torch.cat((im1.get_torch(order=ChannelOrder.CHW), im2.get_torch(order=ChannelOrder.CHW)), dim=-2))
+    else:
+        im1, im2 = im1.get_pil(), im2.get_pil()
+        dst = Image.new('RGBA', (im1.width, im1.height + spacing + im2.height))
+        dst.paste(im1, (0, 0))
+        dst.paste(im2, (0, spacing + im1.height))
+        return Im(dst)
 
 
 def get_layered_image_from_binary_mask(masks, flip=False):
