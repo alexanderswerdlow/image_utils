@@ -292,7 +292,7 @@ class Im:
 
         if len(filepath.parents) == 1:
             filepath = Path('output') / filepath
-            filepath.mkdir(parents=True, exist_ok=True)
+            filepath.parent.mkdir(parents=True, exist_ok=True)
 
         if len(img.shape) > 3:
             from torchvision import utils
