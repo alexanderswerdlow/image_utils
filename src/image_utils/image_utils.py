@@ -133,11 +133,11 @@ class Im:
 
     @property
     def height(self):
-        return self.shape[-2]
+        return self.arr.shape[-3]
     
     @property
     def width(self):
-        return self.shape[-1]
+        return self.arr.shape[-2]
 
     def convert(self, desired_datatype: Union[Image.Image, np.ndarray, torch.Tensor], desired_order: ChannelOrder = ChannelOrder.HWC, desired_range: ChannelRange = ChannelRange.UINT8) -> Im:
         if self.arr_type != desired_datatype or self.channel_order != desired_order or self.channel_range != desired_range:
@@ -152,12 +152,12 @@ class Im:
 
     def convert_to_datatype(desired_datatype: Union[Image.Image, np.ndarray, torch.Tensor], desired_order=ChannelOrder.HWC, desired_range=ChannelRange.UINT8):
         def custom_decorator(func):
-            def wrapper(self, *args):
+            def wrapper(self, *args, **kwargs):
                 if desired_datatype == Image.Image and is_arr(self.arr) and self.arr.shape[0] > 1:
-                    return Im(np.stack([func(Im(img), *args).get_np() for img in self.get_pil()]))
+                    return Im(np.stack([func(Im(img), *args, **kwargs).get_np() for img in self.get_pil()]))
                 else:
                     self = self.convert(desired_datatype, desired_order, desired_range)
-                    return func(self, *args)
+                    return func(self, *args, **kwargs)
             return wrapper
         return custom_decorator
 
@@ -376,6 +376,7 @@ class Im:
     def concat_vertical(*args, **kwargs) -> Im:
         """Concatenates images vertically (i.e. stacked on top of each other)"""
         return concat_variable(concat_vertical_, *args, **kwargs)
+
     @staticmethod
     def concat_horizontal(*args, **kwargs) -> Im:
         """Concatenates images horizontally (i.e. left to right)"""
@@ -417,6 +418,16 @@ class Im:
         byte_stream.seek(0)
         return byte_stream
 
+    def to(self, device):
+        assert self.arr_type == torch.Tensor, "Can only convert to device if array is a torch.Tensor"
+        self.arr = self.arr.to(device)
+        return self
+
+    @staticmethod
+    def stack_imgs(*args):
+        imgs = [img.convert(desired_datatype=np.ndarray) if img.arr_type == Image.Image else img for img in args]
+        return Im(rearrange([img.handle_order_transform(img.arr, desired_order=ChannelOrder.HWC, desired_range=img.channel_range) for img in imgs], 'b ... -> b ...'))
+
     pil = property(get_pil)
     np = property(get_np)
     torch = property(get_torch)
@@ -448,7 +459,10 @@ def get_arr_hwc(im: Im): return im.handle_order_transform(im.arr, desired_order=
 
 def concat_horizontal_(im1: Im, im2: Im, spacing=0) -> Im:
     if is_arr(im1.arr) and is_arr(im2.arr) and im1.height == im2.height:
-        return Im(pack([get_arr_hwc(im1), get_arr_hwc(im2)], 'h * c')[0])
+        if is_tensor(im1.arr):
+            return Im(torch.cat([get_arr_hwc(im1), get_arr_hwc(im2)], dim=-2))
+        elif is_ndarray(im1.arr):
+            return Im(np.concatenate([get_arr_hwc(im1), get_arr_hwc(im2)], axis=-2))
     else:
         im1, im2 = im1.get_pil(), im2.get_pil()
         dst = Image.new("RGBA", (im1.width + spacing + im2.width, max(im2.height, im1.height)))
@@ -459,7 +473,10 @@ def concat_horizontal_(im1: Im, im2: Im, spacing=0) -> Im:
 
 def concat_vertical_(im1: Im, im2: Im, spacing=0) -> Im:
     if is_arr(im1.arr) and is_arr(im2.arr) and im1.width == im2.width:
-        return Im(pack([get_arr_hwc(im1), get_arr_hwc(im2)], '* w c')[0])
+        if is_tensor(im1.arr):
+            return Im(torch.cat([get_arr_hwc(im1), get_arr_hwc(im2)], dim=-3))
+        elif is_ndarray(im1.arr):
+            return Im(np.concatenate([get_arr_hwc(im1), get_arr_hwc(im2)], axis=-3))
     else:
         im1, im2 = im1.get_pil(), im2.get_pil()
         dst = Image.new('RGBA', (im1.width, im1.height + spacing + im2.height))
