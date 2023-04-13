@@ -29,6 +29,7 @@ dependencies = [
 [project.optional-dependencies]
 VIDEO = ["av>=10.0.0", "imageio[ffmpeg]"]
 PROC = ["joblib>=1.2.0"]
+DEV = ["pytest"]
 
 [project.urls]
 Homepage = "https://github.com/alexanderswerdlow/image_utils"

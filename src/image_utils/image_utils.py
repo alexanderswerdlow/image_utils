@@ -6,9 +6,10 @@ from PIL import Image, ImageOps
 import colorsys
 import cv2
 import torch.nn.functional as F
-from einops import rearrange, repeat
+from einops import rearrange, repeat, pack
 import torchvision.transforms.functional as T
-import random
+import tempfile
+from io import BytesIO
 import copy
 from pathlib import Path
 from strenum import StrEnum
@@ -278,10 +279,9 @@ class Im:
         hpercent = (new_height/float(height))
         wsize = int((float(width)*float(hpercent)))
         return self.resize(new_height, wsize)
-
-    def save(self, filepath: Path = None, filetype='png', optimize=False, quality=None):
-        img = self.get_torch()
-
+    
+    @staticmethod
+    def _save_data(filepath: Path = None, filetype='png'):
         if filepath is None:
             from image_utils.file_utils import get_date_time_str
             filepath = get_date_time_str()
@@ -293,6 +293,13 @@ class Im:
         if len(filepath.parents) == 1:
             filepath = Path('output') / filepath
             filepath.parent.mkdir(parents=True, exist_ok=True)
+
+        return filepath
+
+    def save(self, filepath: Path = None, filetype='png', optimize=False, quality=None):
+        img = self.get_torch()
+
+        filepath = Im._save_data(filepath, filetype)
 
         if len(img.shape) > 3:
             from torchvision import utils
@@ -365,6 +372,51 @@ class Im:
         """E.g.,cv2.COLOR_RGB2BGR """
         self.arr = cv2.cvtColor(self.arr, color)
 
+    @staticmethod
+    def concat_vertical(*args, **kwargs) -> Im:
+        """Concatenates images vertically (i.e. stacked on top of each other)"""
+        return concat_variable(concat_vertical_, *args, **kwargs)
+    @staticmethod
+    def concat_horizontal(*args, **kwargs) -> Im:
+        """Concatenates images horizontally (i.e. left to right)"""
+        return concat_variable(concat_horizontal_, *args, **kwargs)
+
+    def save_video(self, filepath: Path, fps: int, format='mp4'):
+        filepath = Im._save_data(filepath, format)
+        byte_stream = self.encode_video(fps, format)
+        with open(filepath, "wb") as f:
+            f.write(byte_stream.getvalue())
+
+    @convert_to_datatype(desired_datatype=np.ndarray, desired_order=ChannelOrder.HWC, desired_range=ChannelRange.UINT8)
+    def encode_video(self, fps: int, format='mp4') -> BytesIO:
+        assert len(self.arr.shape) == 4, "Video data must be 4D (time, height, width, channels)"
+        import imageio
+        byte_stream = BytesIO()
+
+        if format == 'webm':
+            writer = imageio.get_writer(byte_stream, format='webm', codec='libvpx-vp9', pixelformat='yuv420p', output_params=['-lossless', '1'], fps=fps)
+        elif format == 'gif':
+            writer = imageio.get_writer(byte_stream, format='GIF', mode="I", fps=fps)
+        elif format == 'mp4':
+            with tempfile.NamedTemporaryFile(suffix='.mp4') as ntp:
+                writer = imageio.get_writer(ntp.name, quality=10, pixelformat='yuv420p', codec ='libx264', fps=fps)
+                for frame in self.arr:
+                    writer.append_data(frame)
+                writer.close()
+                with open(ntp.name, 'rb') as f:
+                    byte_stream.write(f.read())
+        else:
+            raise NotImplementedError(f'Format {format} not implemented.')
+
+        if format != 'mp4':
+            for frame in self.arr:
+                writer.append_data(frame)
+
+            writer.close()
+        
+        byte_stream.seek(0)
+        return byte_stream
+
     pil = property(get_pil)
     np = property(get_np)
     torch = property(get_torch)
@@ -392,14 +444,11 @@ def concat_variable(concat_func, *args, **kwargs) -> Im:
             
     return output_img
 
-
-def concat_vertical(*args, **kwargs) -> Im: return concat_variable(concat_vertical_, *args, **kwargs)
-def concat_horizontal(*args, **kwargs) -> Im: return concat_variable(concat_horizontal_, *args, **kwargs)
-
+def get_arr_hwc(im: Im): return im.handle_order_transform(im.arr, desired_order=ChannelOrder.HWC, desired_range=im.channel_range)
 
 def concat_horizontal_(im1: Im, im2: Im, spacing=0) -> Im:
-    if im1.height == im2.height and im1.arr_type == torch.Tensor and im2.arr_type == torch.Tensor:
-        return Im(torch.cat((im1.get_torch(order=ChannelOrder.CHW), im2.get_torch(order=ChannelOrder.CHW)), dim=-1))
+    if is_arr(im1.arr) and is_arr(im2.arr) and im1.height == im2.height:
+        return Im(pack([get_arr_hwc(im1), get_arr_hwc(im2)], 'h * c')[0])
     else:
         im1, im2 = im1.get_pil(), im2.get_pil()
         dst = Image.new("RGBA", (im1.width + spacing + im2.width, max(im2.height, im1.height)))
@@ -409,8 +458,8 @@ def concat_horizontal_(im1: Im, im2: Im, spacing=0) -> Im:
 
 
 def concat_vertical_(im1: Im, im2: Im, spacing=0) -> Im:
-    if im1.width == im2.width and im1.arr_type == torch.Tensor and im2.arr_type == torch.Tensor:
-        return Im(torch.cat((im1.get_torch(order=ChannelOrder.CHW), im2.get_torch(order=ChannelOrder.CHW)), dim=-2))
+    if is_arr(im1.arr) and is_arr(im2.arr) and im1.width == im2.width:
+        return Im(pack([get_arr_hwc(im1), get_arr_hwc(im2)], '* w c')[0])
     else:
         im1, im2 = im1.get_pil(), im2.get_pil()
         dst = Image.new('RGBA', (im1.width, im1.height + spacing + im2.height))

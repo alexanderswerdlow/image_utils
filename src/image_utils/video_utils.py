@@ -1,7 +1,6 @@
 import numpy as np
 from pathlib import Path
-import av
-from typing import Dict, Final, Set
+from typing import Final, Set
 from enum import Enum, unique
 
 # Several functions were taken from: https://github.com/argoverse/av2-api
@@ -76,6 +75,7 @@ def write_video(
         _, H, W, _ = video.shape
 
     dst.parent.mkdir(parents=True, exist_ok=True)
+    import av
     with av.open(str(dst), "w") as output:
         stream = output.add_stream(codec, fps)
         if codec in HIGH_EFFICIENCY_VIDEO_CODECS:

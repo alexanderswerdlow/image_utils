@@ -1,5 +1,5 @@
 from typing import Iterable, Union
-from image_utils import Im, strip_unsafe, concat_horizontal, concat_vertical
+from image_utils import Im, strip_unsafe
 from PIL import Image
 import torch
 import numpy as np
@@ -19,6 +19,7 @@ def get_img(img_type: Union[np.ndarray, Image.Image, torch.Tensor], hwc_order=Tr
             img = Image.fromarray(np.random.randint(256, size=(128, 128)).astype(dtype))
     else:
         img = Image.open(img_path)
+
     if img_type == Image.Image:
         return img
 
@@ -146,5 +147,15 @@ def test_concat(img_params):
     if img_params.get('batch_shape', False):
         return
 
-    concat_horizontal(*input_data, spacing=5)
-    concat_vertical(*input_data, spacing=0)
+    Im.concat_horizontal(*input_data, spacing=5)
+    Im.concat_vertical(*input_data, spacing=0)
+
+@pytest.mark.parametrize("img_params", valid_configs)
+@pytest.mark.parametrize("format", ['webm', 'mp4', 'gif'])
+def test_encode_video(img_params, format):
+    img_params['batch_shape'] = {'a': 2}
+    if img_params['img_type'] == Image.Image:
+        return
+    img = Im(get_img(**img_params))
+    img.encode_video(2, format)
+    # img.save_video(get_file_path(img_params, 'video'), 2, format)
