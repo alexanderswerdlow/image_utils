@@ -16,6 +16,10 @@ from strenum import StrEnum
 from enum import auto
 import string
 
+if int(Image.__version__.split(".")[0]) >= 9:
+    resampling_module = Image.Resampling
+else:
+    resampling_module = Image
 
 def is_tensor(obj):
     return torch.is_tensor(obj)
@@ -251,7 +255,7 @@ class Im:
 
     # Taken from: https://github.com/GaParmar/clean-fid/blob/9c9dded6758fc4b575c27c4958dbc87b9065ec6e/cleanfid/resize.py#L41
     @convert_to_datatype(desired_datatype=Image.Image)
-    def resize(self, height, width, resampling_mode=Image.Resampling.LANCZOS):
+    def resize(self, height, width, resampling_mode=resampling_module.LANCZOS):
         def resize_single_channel(x_np):
             img = Image.fromarray(x_np.astype(np.float32), mode='F')
             img = img.resize((width, height), resample=resampling_mode)
