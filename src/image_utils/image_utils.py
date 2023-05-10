@@ -16,7 +16,7 @@ from strenum import StrEnum
 from enum import auto
 import string
 
-if int(Image.__version__.split(".")[0]) >= 9:
+if int(Image.__version__.split(".")[0]) >= 9 and int(Image.__version__.split(".")[1]) > 0:
     resampling_module = Image.Resampling
 else:
     resampling_module = Image
