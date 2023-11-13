@@ -1,6 +1,6 @@
 # Image Utils
 
-_Warning: This is a very alpha level library and was built for my personal use. The API is unstable and subject to change. Be careful when using this library for preprocessing._
+_Warning: This is an alpha level library and was built for my personal use. The API is unstable and subject to change. If you use this library as part of another application, consider pinning to a specific commit, especially if you are using this library for preprocessing._
 
 Are you tired of having to constantly switch between NumPy arrays, PyTorch Tensors, and PIL images? Gone are the days of arr.transpose(1, 2, 0) or arr.permute(2, 0, 1) with image utils.
 
@@ -60,3 +60,7 @@ Instead of only seeing the array contents, we can now view the shape, dtype, dev
 To run tests run `pytest`
 
 To break with pdb on error, run: `pytest --pdb -s`
+
+## Alternate Libaries
+
+https://github.com/xl0/lovely-tensors
