@@ -1,20 +1,22 @@
 from __future__ import annotations
+
+import colorsys
+import copy
+import string
+import tempfile
+from enum import auto
+from io import BytesIO
+from pathlib import Path
 from typing import Iterable, Optional, Tuple, Union
+
+import cv2
 import numpy as np
 import torch
-from PIL import Image, ImageOps
-import colorsys
-import cv2
 import torch.nn.functional as F
-from einops import rearrange, repeat, pack
 import torchvision.transforms.functional as T
-import tempfile
-from io import BytesIO
-import copy
-from pathlib import Path
+from einops import pack, rearrange, repeat
+from PIL import Image, ImageOps
 from strenum import StrEnum
-from enum import auto
-import string
 
 if int(Image.__version__.split(".")[0]) >= 9 and int(Image.__version__.split(".")[1]) > 0:
     resampling_module = Image.Resampling
@@ -59,7 +61,10 @@ class Im:
     default_normalize_mean = [0.4265, 0.4489, 0.4769]
     default_normalize_std = [0.2053, 0.2206, 0.2578]
 
-    def __init__(self, arr, channel_range: ChannelRange = None, **kwargs):
+    def __init__(self, arr, channel_range: ChannelRange = None):
+        if isinstance(arr, str):
+            arr = Image.open(load_cached_from_url(arr))
+
         self.arr_device = None
         self.arr = arr
         self.arr_type: Union[Image.Image, np.ndarray, torch.Tensor]
@@ -568,3 +573,27 @@ def square_pad(image, h, w):
 
     else:
         return T.resize(image, [h, w])
+
+def download_image(url) -> BytesIO:
+    import urllib
+    try:
+        with urllib.request.urlopen(url) as response:
+            return BytesIO(response.read())
+    except urllib.error.URLError as e:
+        raise Exception("Error downloading the image: " + str(e))
+
+def load_cached_from_url(url: str) -> Path:
+    import hashlib
+    cache_dir = Path.home() / '.cache' / 'image_utils'
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    filename = hashlib.md5(url.encode()).hexdigest()
+    local_path = cache_dir / filename
+
+    if local_path.exists():
+        return BytesIO(local_path.read_bytes())
+    else:
+        image_bytesio = download_image(url)
+        print(f'Downloading image from {url} and caching in {local_path}')
+        with open(local_path, 'wb') as file:
+            file.write(image_bytesio.getvalue())
+        return image_bytesio

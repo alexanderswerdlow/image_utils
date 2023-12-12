@@ -26,6 +26,7 @@ dependencies = [
     "StrEnum>=0.4.9",
     "lovely-tensors>=0.1.14",
     "lovely-numpy>=0.2.8",
+    "filetype"
 ]
 
 [project.optional-dependencies]
