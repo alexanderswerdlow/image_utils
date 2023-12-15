@@ -4,7 +4,7 @@ import random
 import string
 from datetime import datetime
 import pickle
-from image_utils import Im
+
 
 
 def delete_create_folder(path: Path):
@@ -52,5 +52,6 @@ def get_files(path: Path, recursive: bool = False, return_folders: bool = False,
 
 
 def get_images(recursive: bool = False, allowed_extensions=[".png", ".jpg", ".jpeg"]):
+    from image_utils import Im
     for file in get_files(recursive=recursive, allowed_extensions=allowed_extensions):
         yield Im.open(file)

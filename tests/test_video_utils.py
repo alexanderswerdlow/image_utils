@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from pathlib import Path
 
-img_path = Path('tests/flower.jpg')
+img_path = Path('tests/high_res.png')
 save_path = Path(__file__).parent / 'output'
 
 

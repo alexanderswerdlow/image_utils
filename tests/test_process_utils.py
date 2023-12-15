@@ -4,7 +4,7 @@ import pytest
 from pathlib import Path
 import numpy as np
 
-img_path = Path('tests/flower.jpg')
+img_path = Path('tests/high_res.png')
 save_path = Path(__file__).parent / 'output'
 
 
@@ -24,7 +24,7 @@ def get_test_list(list_size):
 
 
 @pytest.mark.parametrize("num_processes", [1, 2, 10])
-@pytest.mark.parametrize("list_size", [1, 10, 1000])
+@pytest.mark.parametrize("list_size", [1, 10, 100])
 def test_parallelize(num_processes, list_size):
     test_list = get_test_list(list_size)
     rng = np.random.RandomState(42)

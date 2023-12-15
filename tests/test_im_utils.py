@@ -7,7 +7,7 @@ import pytest
 from pathlib import Path
 from einops import rearrange, repeat
 
-img_path = Path('tests/flower.jpg')
+img_path = Path('tests/high_res.png')
 save_path = Path(__file__).parent / 'output'
 
 
@@ -34,7 +34,7 @@ def get_img(img_type: Union[np.ndarray, Image.Image, torch.Tensor], hwc_order=Tr
         img = img / 255.0
         if img_type == torch.Tensor:
             img = img.to(dtype=dtype)
-        else:
+        elif img_type == np.ndarray:
             img = img.astype(dtype)
 
     if normalize:
@@ -44,6 +44,8 @@ def get_img(img_type: Union[np.ndarray, Image.Image, torch.Tensor], hwc_order=Tr
         img = img.to(device=device)
 
     if batch_shape is not None:
+        if len(img.shape) == 2:
+            img = img[None]
         img = repeat(img, f'... -> {" ".join(sorted(list(batch_shape)))} ...', **batch_shape)
 
     return img
@@ -109,7 +111,7 @@ def test_write_text(img_params):
 @pytest.mark.parametrize("img_params", valid_configs)
 def test_add_border(img_params):
     img = Im(get_img(**img_params))
-    img.copy.add_border(border=5, color=(128, 128, 128)).save(get_file_path(img_params, 'border'))
+    img.copy.add_border(border=50, color=(128, 128, 128)).save(get_file_path(img_params, 'border'))
 
 
 @pytest.mark.parametrize("img_params", valid_configs)
@@ -119,6 +121,7 @@ def test_resize(img_params):
     img.copy.scale(0.25).save(get_file_path(img_params, 'downscale'))
     img.copy.scale_to_width(128).save(get_file_path(img_params, 'scale_width'))
     img.copy.scale_to_height(128).save(get_file_path(img_params, 'scale_height'))
+    img.copy.scale(0.5).scale_to_width(128).resize(512, 1024).scale_to_width(512).save(get_file_path(img_params, 'multiple_resize'))
 
 
 @pytest.mark.parametrize("img_params", valid_configs)
@@ -158,4 +161,26 @@ def test_encode_video(img_params, format):
         return
     img = Im(get_img(**img_params))
     img.encode_video(2, format)
-    # img.save_video(get_file_path(img_params, 'video'), 2, format)
+    img.save_video(get_file_path(img_params, 'video'), 2, format)
+
+@pytest.mark.parametrize("img_params", valid_configs)
+def test_complicated(img_params):
+    img = Im(get_img(**img_params))
+    img = img.scale(0.5).resize(128, 128)
+    img = img.add_border(border=5, color=(128, 128, 128)).normalize(mean=(0.5, 0.75, 0.5), std=(0.1, 0.01, 0.01))
+    img = img.torch
+    img = Im(img).denormalize(mean=(0.5, 0.75, 0.5), std=(0.1, 0.01, 0.01))
+    img = img.colorize()
+    img.save(get_file_path(img_params, 'complicated'))
+
+@pytest.mark.parametrize("img_params", valid_configs)
+def test_complicated(img_params):
+    img = Im(get_img(**img_params))
+    img = img.scale(0.5).resize(128, 128)
+    img = img.add_border(border=5, color=(128, 128, 128)).normalize(mean=(0.5, 0.75, 0.5), std=(0.1, 0.01, 0.01))
+    img = img.torch
+    img = Im(img).denormalize(mean=(0.5, 0.75, 0.5), std=(0.1, 0.01, 0.01))
+    img = img.colorize()
+    img.save(get_file_path(img_params, 'complicated'))
+    
+# image = Im('https://raw.githubusercontent.com/SysCV/sam-hq/main/demo/input_imgs/example8.png').pil
