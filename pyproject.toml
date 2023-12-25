@@ -5,22 +5,21 @@ build-backend = "hatchling.build"
 [project]
 name = "image_utils"
 version = "0.0.1"
-authors = [
-  { name="Alexander Swerdlow", email="aswerdlow1@gmail.com" },
-]
-description = "A small example package"
+authors = [{ name="Alexander Swerdlow", email="aswerdlow1@gmail.com" }]
+description = "A utility library for common image and video operations."
 readme = "README.md"
-requires-python = ">=3.7"
+requires-python = ">=3.8"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
+
 dependencies = [
+    "torch",
+    "torchvision",
     "opencv-python>=4.5",
     "numpy>=1.22",
-    # "torch>=1.12",
-    # "torchvision>=0.13",
     "pillow>=9.0.0",
     "einops>=0.6.0",
     "StrEnum>=0.4.9",

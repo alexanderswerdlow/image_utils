@@ -153,15 +153,17 @@ def test_concat(img_params):
     Im.concat_horizontal(*input_data, spacing=5)
     Im.concat_vertical(*input_data, spacing=0)
 
-@pytest.mark.parametrize("img_params", valid_configs)
-@pytest.mark.parametrize("format", ['webm', 'mp4', 'gif'])
-def test_encode_video(img_params, format):
-    img_params['batch_shape'] = {'a': 2}
+@pytest.mark.parametrize("img_params", valid_configs[:4])
+@pytest.mark.parametrize("format", ['mp4', 'gif', 'webm'])
+@pytest.mark.parametrize("frames", [1, 2, 4, 16])
+@pytest.mark.parametrize("fps", [2, 16])
+def test_encode_video(img_params, format, frames, fps):
+    img_params['batch_shape'] = {'a': frames}
     if img_params['img_type'] == Image.Image:
         return
     img = Im(get_img(**img_params))
-    img.encode_video(2, format)
-    img.save_video(get_file_path(img_params, 'video'), 2, format)
+    img.encode_video(fps=fps, format=format)
+    img.save_video(get_file_path(img_params, 'video'), fps=fps, format=format)
 
 @pytest.mark.parametrize("img_params", valid_configs)
 def test_complicated(img_params):
@@ -169,16 +171,7 @@ def test_complicated(img_params):
     img = img.scale(0.5).resize(128, 128)
     img = img.add_border(border=5, color=(128, 128, 128)).normalize(mean=(0.5, 0.75, 0.5), std=(0.1, 0.01, 0.01))
     img = img.torch
-    img = Im(img).denormalize(mean=(0.5, 0.75, 0.5), std=(0.1, 0.01, 0.01))
-    img = img.colorize()
-    img.save(get_file_path(img_params, 'complicated'))
-
-@pytest.mark.parametrize("img_params", valid_configs)
-def test_complicated(img_params):
-    img = Im(get_img(**img_params))
-    img = img.scale(0.5).resize(128, 128)
-    img = img.add_border(border=5, color=(128, 128, 128)).normalize(mean=(0.5, 0.75, 0.5), std=(0.1, 0.01, 0.01))
-    img = img.torch
+    print(img.min(), img.max(), img.shape)
     img = Im(img).denormalize(mean=(0.5, 0.75, 0.5), std=(0.1, 0.01, 0.01))
     img = img.colorize()
     img.save(get_file_path(img_params, 'complicated'))

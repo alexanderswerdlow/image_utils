@@ -1,13 +1,11 @@
-from functools import partial
-from multiprocessing import Pool
 import random
 import time
-from pathlib import Path
-from joblib import dump, load
-import time
-import numpy as np
+from functools import partial
+from multiprocessing import Pool
+from typing import Callable
+
+import torch
 from joblib import Parallel, delayed
-from joblib import Memory
 
 
 def timer_func(func):
@@ -19,16 +17,28 @@ def timer_func(func):
         return result
     return wrap_func
 
+def cuda_timer_func(func):
+    def wrap_func(*args, **kwargs):
+        start_event = torch.cuda.Event(enable_timing=True)
+        end_event = torch.cuda.Event(enable_timing=True)
+        start_event.record() # type: ignore
+        result = func(*args, **kwargs)
+        end_event.record() # type: ignore
+        torch.cuda.synchronize()  # Wait for the events to be recorded!
+        elapsed_time_ms = start_event.elapsed_time(end_event)
+        print(f'Elapsed time: {elapsed_time_ms:.3f} ms')
+        return result
+    return wrap_func
 
 def split_range(a, n):
     k, m = divmod(len(a), n)
     return (a[i * k + min(i, m): (i + 1) * k + min(i + 1, m)] for i in range(n))
 
 
-def parallelize(func=None, num_processes=1, shuffle=False, custom_chunking=False, use_joblib=False):
+def parallelize(func: Callable, num_processes=1, shuffle=False, custom_chunking=False, use_joblib=False):
     def wrapper(iterable, **kwargs):
         if use_joblib:
-            executor = Parallel(n_jobs=num_processes, max_nbytes=1e6)
+            executor = Parallel(n_jobs=num_processes)
             tasks = (delayed(func)(iterable, idx, **kwargs) for idx in range(len(iterable)))
             return executor(tasks)
         else:

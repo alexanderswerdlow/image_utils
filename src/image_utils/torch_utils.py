@@ -1,17 +1,18 @@
+import hashlib
+import logging
+import os
+import subprocess
+from collections import defaultdict
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
+
 import numpy as np
 import torch
-import torch.nn as nn
 import torch.distributed as dist
-from torch import Tensor
-from collections import defaultdict
-import hashlib
-import os
-import subprocess
-import logging
+import torch.nn as nn
 from jaxtyping import BFloat16
+from torch import Tensor
 
 logger = logging.getLogger(__name__)
 
