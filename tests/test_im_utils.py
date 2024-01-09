@@ -150,8 +150,27 @@ def test_concat(img_params):
     if img_params.get('batch_shape', False):
         return
 
+    # Test the standard way
     Im.concat_horizontal(*input_data, spacing=5)
     Im.concat_vertical(*input_data, spacing=0)
+
+    # Test inputting a list directly
+    Im.concat_horizontal(input_data, spacing=5)
+    Im.concat_vertical(input_data, spacing=0)
+
+    # Test inputting raw arrays
+    Im.concat_horizontal(*[x.arr for x in input_data], spacing=5)
+    Im.concat_vertical(*[x.arr for x in input_data], spacing=5)
+
+    # Test unequal sizes in both the direction of concat and not
+    Im.concat_vertical(*[img.np, img.np[:img.np.shape[0] // 2], img.np[img.np.shape[0] // 2:]], spacing=5)
+    Im.concat_vertical(*[img.np, img.np[:, :img.np.shape[0] // 2], img.np[:, img.np.shape[0] // 2:]], spacing=5)
+    Im.concat_vertical(*[img.np, img.np[:img.np.shape[0] // 2, :img.np.shape[0] // 2]], spacing=5)
+    Im.concat_vertical(*[img.np, img.np[:img.np.shape[0] // 2]], spacing=5)
+
+    Im.concat_horizontal(*[img.np, img.np[:img.np.shape[0] // 2], img.np[img.np.shape[0] // 2:]], spacing=5)
+    Im.concat_horizontal(*[img.np, img.np[:img.np.shape[0] // 2, :img.np.shape[0] // 2], img.np[:, img.np.shape[0] // 2:]], spacing=5)
+    Im.concat_horizontal(*[img.np, img.np[:, :img.np.shape[0] // 2]], spacing=5)
 
 @pytest.mark.parametrize("img_params", valid_configs[:4])
 @pytest.mark.parametrize("format", ['mp4', 'gif', 'webm'])

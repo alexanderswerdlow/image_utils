@@ -61,6 +61,8 @@ To run tests run `pytest`
 
 To break with pdb on error, run: `pytest --pdb -s`
 
+To run a specific test run: `pytest -k 'test_concat' --pdb -s`
+
 ## Alternate Libaries
 
 https://github.com/xl0/lovely-tensors

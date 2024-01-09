@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import string
 import tempfile
+import warnings
 from enum import auto
 from io import BytesIO
 from pathlib import Path
@@ -20,7 +21,7 @@ from numpy import ndarray
 from PIL import Image, ImageOps
 from strenum import StrEnum
 from torch import Tensor
-from torchvision.transforms.functional import resize, InterpolationMode
+from torchvision.transforms.functional import InterpolationMode, resize
 
 from image_utils.file_utils import get_date_time_str, load_cached_from_url
 from image_utils.standalone_image_utils import pca, torch_to_numpy
@@ -151,7 +152,7 @@ class Im:
         if channel_range is not None: # Optionally specify the type
             self.channel_range = channel_range
         elif is_dtype(arr, Integer):
-            assert self.arr.max() > 0, "Integer array must be non-negative"
+            assert self.arr.max() >= 0, "Integer array must be non-negative"
             if self.arr.max() > 1:
                 self.channel_range = ChannelRange.UINT8
             else: # We assume an integer array with 0s and 1s is a BW image
@@ -208,7 +209,7 @@ class Im:
         return custom_decorator
 
     def _handle_order_transform(self, im, desired_order: ChannelOrder, desired_range: ChannelRange, select_batch=None):
-        if select_batch:
+        if select_batch is not None:
             im = im[select_batch]
         else:
             im = self.arr_transform(im)
@@ -283,6 +284,11 @@ class Im:
     @property
     def width(self):
         return self.image_shape[1]
+    
+    @property
+    def batch_size(self):
+        # TODO: This is a bit hacky
+        return self.arr.shape[0]
     
     @property
     def channels(self):
@@ -530,8 +536,14 @@ class Im:
 
 
 def concat_variable(concat_func: Callable[..., Im], *args: Im, **kwargs) -> Im:
+    if len(args) == 1 and isinstance(args[0], Iterable):
+        args = args[0]
+
     output_img = None
     for img in args:
+        if not isinstance(img, Im):
+            img = Im(img)
+
         if output_img is None:
             output_img = img
         else:
@@ -540,15 +552,44 @@ def concat_variable(concat_func: Callable[..., Im], *args: Im, **kwargs) -> Im:
     assert isinstance(output_img, Im)
     return output_img
 
-def get_arr_hwc(im: Im): 
-    return im._handle_order_transform(im.arr, desired_order=ChannelOrder.HWC, desired_range=im.channel_range)
+def get_arr_hwc(im: Im):
+    assert im.batch_size == 1, "Must have batch size of 1"
+    return im._handle_order_transform(im.arr, desired_order=ChannelOrder.HWC, desired_range=im.channel_range, select_batch=0)
 
+def new_like(arr, shape):
+    if is_ndarray(arr):
+        return np.zeros_like(arr, shape=shape)
+    elif is_tensor(arr):
+        return arr.new_zeros(shape)
+    else:
+        raise ValueError('Must be numpy array or torch tensor')
+    
 def concat_horizontal_(im1: Im, im2: Im, **kwargs) -> Im:
+    im1_arr = get_arr_hwc(im1)
+    im2_arr = get_arr_hwc(im2)
     if im1.height != im2.height:
-        raise ValueError(f'Images must have same height. Got {im1.height} and {im2.height}')
-    return Im(pack([get_arr_hwc(im1), get_arr_hwc(im2)], 'h * c')[0])
+        warnings.warn(f'Images should have same height. Got {im1.height} and {im2.height}. Padding to match height.')
+        if im1.height > im2.height:
+            new_im2_arr = new_like(im1_arr, (im1_arr.shape[0], im2_arr.shape[1], im2_arr.shape[2]))
+            new_im2_arr[:im2.height] = im2_arr
+            im2_arr = new_im2_arr
+        else:
+            new_im1_arr = new_like(im2_arr, (im2_arr.shape[0], im1_arr.shape[1], im1_arr.shape[2]))
+            new_im1_arr[:im1.height] = im1_arr
+            im1_arr = new_im1_arr
+    return Im(pack([im1_arr, im2_arr], 'h * c')[0])
 
 def concat_vertical_(im1: Im, im2: Im, **kwargs) -> Im:
+    im1_arr = get_arr_hwc(im1)
+    im2_arr = get_arr_hwc(im2)
     if im1.width != im2.width:
-        raise ValueError(f'Images must have same width. Got {im1.width} and {im2.width}')
-    return Im(pack([get_arr_hwc(im1), get_arr_hwc(im2)], '* w c')[0])
+        warnings.warn(f'Images should have same width. Got {im1.width} and {im2.width}. Padding to match width.')
+        if im1.width > im2.width:
+            new_im2_arr = new_like(im1_arr, (im2_arr.shape[0], im1_arr.shape[1], im2_arr.shape[2]))
+            new_im2_arr[:, :im2.width] = im2_arr
+            im2_arr = new_im2_arr
+        else:
+            new_im1_arr = new_like(im2_arr, (im1_arr.shape[0], im2_arr.shape[1], im1_arr.shape[2]))
+            new_im1_arr[:, :im1.width] = im1_arr
+            im1_arr = new_im1_arr
+    return Im(pack([im1_arr, im2_arr], '* w c')[0])
