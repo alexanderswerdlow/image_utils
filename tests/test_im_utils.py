@@ -158,6 +158,9 @@ def test_concat(img_params):
     Im.concat_horizontal(input_data, spacing=5)
     Im.concat_vertical(input_data, spacing=0)
 
+    # Test different underlying types
+    Im.concat_vertical(*[img, Im(img.np), Im(img.torch)], spacing=0)
+
     # Test inputting raw arrays
     Im.concat_horizontal(*[x.arr for x in input_data], spacing=5)
     Im.concat_vertical(*[x.arr for x in input_data], spacing=5)

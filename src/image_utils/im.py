@@ -544,9 +544,15 @@ def concat_variable(concat_func: Callable[..., Im], *args: Im, **kwargs) -> Im:
         if not isinstance(img, Im):
             img = Im(img)
 
+        if img.channel_range == ChannelRange.BOOL:
+            warnings.warn('Concatenating boolean images. We are converting to NumPy. This may cause unexpected behavior.')
+            img = Im(img.np)
+
         if output_img is None:
             output_img = img
         else:
+            if output_img.arr_type != img.arr_type or output_img.channel_order != img.channel_order or output_img.channel_range != img.channel_range:
+                img = img._convert(desired_datatype=output_img.arr_type, desired_order=output_img.channel_order, desired_range=output_img.channel_range)
             output_img = concat_func(output_img, img, **kwargs)
 
     assert isinstance(output_img, Im)
