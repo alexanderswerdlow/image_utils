@@ -84,7 +84,8 @@ def square_pad(image, h, w):
 
     else:
         return T.resize(image, [h, w], antialias=True)
-    
+
+
 def calculate_principal_components(embeddings, num_components=3):
     """Calculates the principal components given the embedding features.
 
@@ -101,17 +102,13 @@ def calculate_principal_components(embeddings, num_components=3):
     return v[:, :num_components]
 
 
-def pca(
-        embeddings: Tensor, 
-        num_components: int = 3, 
-        principal_components: Optional[Tensor] = None
-    ) -> Tensor:
+def pca(embeddings: Tensor, num_components: int = 3, principal_components: Optional[Tensor] = None) -> Tensor:
     """Conducts principal component analysis on the embedding features.
 
     This function is used to reduce the dimensionality of the embedding.
 
     Args:
-        embeddings: An N-D float tensor with shape with the 
+        embeddings: An N-D float tensor with shape with the
         last dimension as `embedding_dim`.
         num_components: The number of principal components.
         principal_components: A 2-D float tensor used to convert the
@@ -126,8 +123,7 @@ def pca(
     embeddings = embeddings.view(-1, shape[-1])
 
     if principal_components is None:
-        principal_components = calculate_principal_components(
-            embeddings, num_components)
+        principal_components = calculate_principal_components(embeddings, num_components)
     embeddings = torch.mm(embeddings, principal_components)
 
     new_shape = list(shape[:-1]) + [num_components]

@@ -9,4 +9,4 @@ from einops import rearrange
 
 
 def pytest_sessionstart(session):
-    delete_create_folder(Path(__file__).parent / 'output')
+    delete_create_folder(Path(__file__).parent / "output")

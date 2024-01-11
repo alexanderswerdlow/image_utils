@@ -4,8 +4,8 @@ import numpy as np
 import pytest
 from pathlib import Path
 
-img_path = Path('tests/high_res.png')
-save_path = Path(__file__).parent / 'output'
+img_path = Path("tests/high_res.png")
+save_path = Path(__file__).parent / "output"
 
 
 @pytest.mark.parametrize("fps", [1, 10])
@@ -13,4 +13,4 @@ save_path = Path(__file__).parent / 'output'
 def test_write_video(frames, fps):
     img = Im.open(img_path).np
     video = np.stack([img for _ in range(frames)], axis=0)
-    write_video(video, save_path / 'test.mp4', fps=fps)
+    write_video(video, save_path / "test.mp4", fps=fps)

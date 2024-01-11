@@ -13,7 +13,7 @@ def delete_create_folder(path: Path):
 
 
 def get_rand_hex():
-    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=5))
+    return "".join(random.choices(string.ascii_uppercase + string.digits, k=5))
 
 
 def get_date_time_str():
@@ -21,7 +21,7 @@ def get_date_time_str():
 
 
 def strip_unsafe(filename):
-    return "".join([c for c in filename if c.isalpha() or c.isdigit() or c == '' or c == '_']).rstrip()
+    return "".join([c for c in filename if c.isalpha() or c.isdigit() or c == "" or c == "_"]).rstrip()
 
 
 def save_pickle(file_path: Path):
@@ -34,7 +34,8 @@ def load_pickle(obj, file_path: Path):
         pickle.dump(obj, f)
 
 
-def get_file_list(**kwargs): [f for f in get_files(**kwargs)]
+def get_file_list(**kwargs):
+    [f for f in get_files(**kwargs)]
 
 
 def get_files(path: Path, recursive: bool = False, return_folders: bool = False, allowed_extensions=None):
@@ -53,8 +54,10 @@ def get_files(path: Path, recursive: bool = False, return_folders: bool = False,
 
 def get_images(path: Path, recursive: bool = False, allowed_extensions=[".png", ".jpg", ".jpeg"]):
     from image_utils import Im
+
     for file in get_files(path=path, recursive=recursive, allowed_extensions=allowed_extensions):
         yield Im.open(file)
+
 
 def load_cached_from_url(url: str) -> BytesIO:
     import hashlib
@@ -73,8 +76,10 @@ def load_cached_from_url(url: str) -> BytesIO:
             file.write(image_bytesio.getvalue())
         return image_bytesio
 
+
 def download_file_bytes(url) -> BytesIO:
     from urllib import error, request
+
     try:
         with request.urlopen(url) as response:
             return BytesIO(response.read())

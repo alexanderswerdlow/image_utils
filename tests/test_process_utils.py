@@ -4,8 +4,8 @@ import pytest
 from pathlib import Path
 import numpy as np
 
-img_path = Path('tests/high_res.png')
-save_path = Path(__file__).parent / 'output'
+img_path = Path("tests/high_res.png")
+save_path = Path(__file__).parent / "output"
 
 
 # memory = Memory(location='./cachedir', verbose=0, mmap_mode='r')
@@ -14,6 +14,7 @@ save_path = Path(__file__).parent / 'output'
 #     """Emulate a costly function by sleeping and returning a column."""
 #     time.sleep(1)
 #     return data[column] + 1
+
 
 def do_func(lst, idx, arr):
     print(len(lst), arr.shape)

@@ -16,13 +16,16 @@ from torch import Tensor
 
 logger = logging.getLogger(__name__)
 
+
 def get_info():
-    return subprocess.run(['nvidia-smi'], stdout=subprocess.PIPE).stdout.decode('utf-8')
-    
+    return subprocess.run(["nvidia-smi"], stdout=subprocess.PIPE).stdout.decode("utf-8")
+
+
 def print_params(model):
     print(f"Total Parameters: {sum(p.numel() for p in model.parameters()):,}")
     print(f"Unfrozen Parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
     print(f"Frozen Parameters: {sum(p.numel() for p in model.parameters() if not p.requires_grad):,}")
+
 
 def calculate_storage_size(obj, storage_view_sizes, count_views=False):
     if isinstance(obj, torch.Tensor):
@@ -40,8 +43,7 @@ def calculate_storage_size(obj, storage_view_sizes, count_views=False):
             print_size = 0 if not count_views or not obj._is_view() else view_size
 
         if count_views or not obj._is_view():
-            print(f"{'View' if obj._is_view() else 'Storage'} Tensor: "
-              f"shape {obj.size()}, size {print_size / (1024 ** 2):.2f} MB")
+            print(f"{'View' if obj._is_view() else 'Storage'} Tensor: " f"shape {obj.size()}, size {print_size / (1024 ** 2):.2f} MB")
 
         return print_size if count_views or not obj._is_view() else 0  # Count views only if requested
     elif isinstance(obj, dict):
@@ -58,6 +60,7 @@ def calculate_storage_size(obj, storage_view_sizes, count_views=False):
         # Non-Tensor, non-dict, non-list objects are not measured
         return 0
 
+
 def calculate_total_size(obj, count_views=False):
     storage_view_sizes = defaultdict(int)
     total_size = calculate_storage_size(obj, storage_view_sizes, count_views)
@@ -70,10 +73,11 @@ def calculate_total_size(obj, count_views=False):
         print(f"Total size (without counting views): {total_size / (1024 ** 2):.2f} MB")
 
     return total_size
-    
+
+
 def save_tensor_dict(tensor_dict: dict, path: Path):
     output_dict = {}
-    for k,v in tensor_dict.items():
+    for k, v in tensor_dict.items():
         if isinstance(v, Tensor):
             if v.dtype == torch.float16 or v.dtype == torch.bfloat16:
                 output_dict[k] = v.to(dtype=torch.float32).detach().cpu().numpy()
@@ -83,27 +87,31 @@ def save_tensor_dict(tensor_dict: dict, path: Path):
             output_dict[k] = v
     np.savez_compressed(path, **output_dict)
 
+
 def load_tensor_dict(path: Path):
     tensor_dict = {}
     np_dict = np.load(path)
-    for k,v in np_dict.items():
+    for k, v in np_dict.items():
         if v.dtype == BFloat16:
             tensor_dict[k] = torch.from_numpy(v.astype(np.float32)).to(dtype=torch.bfloat16)
         else:
             tensor_dict[k] = torch.from_numpy(v)
     return tensor_dict
 
+
 def tensor_hash(tensor):
     """Computes a SHA256 hash of a tensor. Useful for debugging to check equality in different places."""
     tensor_bytes = tensor.cpu().numpy().tobytes()
     return hashlib.sha256(tensor_bytes).hexdigest()
 
+
 def module_hash(module):
     """Computes a hash of all module parameters"""
     state_dict = module.state_dict()
     sorted_state_dict = {k: state_dict[k] for k in sorted(state_dict)}
-    params_cat = torch.cat([v.flatten() for _,v in sorted_state_dict.items()])
+    params_cat = torch.cat([v.flatten() for _, v in sorted_state_dict.items()])
     return tensor_hash(params_cat)
+
 
 def find_diff_params(state_dict_1, state_dict_2):
     """Compares parameter names in difference state_dicts. This does not check the values themselves!"""
@@ -114,20 +122,20 @@ def find_diff_params(state_dict_1, state_dict_2):
     for key in matched_keys:
         if not torch.equal(state_dict_1[key], state_dict_2[key]):
             diff_keys.add(key)
-    
+
     return diff_keys
 
-def init_from_ckpt(
-        module: nn.Module,
-        path: Path, 
-        ignore_keys: Optional[tuple] = None, 
-        unfrozen_keys: Optional[tuple] = None, 
-        strict: bool = False, 
-        truncate: Optional[str] = None, 
-        only_incl: Optional[tuple] = None, 
-        verbose: bool = True
-    ):
 
+def init_from_ckpt(
+    module: nn.Module,
+    path: Path,
+    ignore_keys: Optional[tuple] = None,
+    unfrozen_keys: Optional[tuple] = None,
+    strict: bool = False,
+    truncate: Optional[str] = None,
+    only_incl: Optional[tuple] = None,
+    verbose: bool = True,
+):
     print(f"Loading {module.__class__.__name__} from checkpoint: {path}")
     print(f"Strict Load: {strict}, Ignoring: {ignore_keys}, Unfreezing: {unfrozen_keys}, Truncating: {truncate}")
 
@@ -142,8 +150,8 @@ def init_from_ckpt(
     # Common top-level keys when saving
     if "state_dict" in sd.keys():
         sd = sd["state_dict"]
-    elif 'weight' in sd.keys():
-        sd = sd['weight']
+    elif "weight" in sd.keys():
+        sd = sd["weight"]
 
     num_deleted = defaultdict(int)
     for k in list(sd):
@@ -153,12 +161,12 @@ def init_from_ckpt(
                 del sd[k]
 
     for k, v in num_deleted.items():
-        print(f'Deleted {v} keys due to ignore_key: {k}')
+        print(f"Deleted {v} keys due to ignore_key: {k}")
 
     if truncate is not None:
         for k in list(sd):
             if k.startswith(truncate):
-                sd[k.replace(truncate, '')] = sd[k]
+                sd[k.replace(truncate, "")] = sd[k]
             del sd[k]
 
     num_ignored = defaultdict(int)
@@ -168,7 +176,7 @@ def init_from_ckpt(
                 if ik in n:
                     num_ignored[ik] += 1
                 else:
-                    print(f'Missing {n}')
+                    print(f"Missing {n}")
 
     if only_incl is not None:
         for k in list(sd):
@@ -180,19 +188,19 @@ def init_from_ckpt(
                 del sd[k]
 
     for k, v in num_ignored.items():
-        print(f'Missing {v} keys due to ignore_key: {k}')
+        print(f"Missing {v} keys due to ignore_key: {k}")
 
     for n in sd.keys():
         if n not in module.state_dict().keys():
-            print(f'Unexpected {n}')
+            print(f"Unexpected {n}")
 
     checkpoint_keys = set(sd.keys())
     current_keys = set(module.state_dict().keys())
-    
+
     if verbose:
-        print(f'Loading: {checkpoint_keys.intersection(current_keys)}')
+        print(f"Loading: {checkpoint_keys.intersection(current_keys)}")
     else:
-        print(f'Loading {len(checkpoint_keys.intersection(current_keys))} keys into the model: {str(module.__class__)}')
+        print(f"Loading {len(checkpoint_keys.intersection(current_keys))} keys into the model: {str(module.__class__)}")
 
     module.load_state_dict(sd, strict=strict)
 
@@ -202,15 +210,16 @@ def init_from_ckpt(
             for unfrozen_name in unfrozen_keys:
                 if unfrozen_name in n:
                     p.requires_grad_ = True
-                    print(f'Unfreezing: {n}')
+                    print(f"Unfreezing: {n}")
 
     print(f"Restored from {path}")
+
 
 def check_gpu_memory_usage():
     allocated = torch.cuda.memory_allocated()
     reserved = torch.cuda.memory_reserved()
-    
-    if dist.is_available() and dist.is_initialized(): # Check if distributed
+
+    if dist.is_available() and dist.is_initialized():  # Check if distributed
         rank = dist.get_rank()
     else:
         rank = 0
@@ -226,6 +235,7 @@ def check_gpu_memory_usage():
     assert allocated_percent <= 25
     assert reserved_percent <= 25
 
+
 def load_checkpoint_from_url(url: str, file_path: Optional[Path] = None) -> Path:
     if file_path is None:
         parts = urlparse(url)
@@ -233,11 +243,11 @@ def load_checkpoint_from_url(url: str, file_path: Optional[Path] = None) -> Path
         if file_path is not None:
             filename = file_path
 
-        file_path = Path.home() / '.cache' / 'pretrained_weights' / filename
+        file_path = Path.home() / ".cache" / "pretrained_weights" / filename
 
     file_path.parent.mkdir(parents=True, exist_ok=True)
     if not os.path.exists(file_path):
         print(f'Downloading: "{url}" to {file_path}\n')
         torch.hub.download_url_to_file(url, str(file_path), progress=True)
-    
+
     return file_path

@@ -76,6 +76,7 @@ def write_video(
 
     dst.parent.mkdir(parents=True, exist_ok=True)
     import av
+
     with av.open(str(dst), "w") as output:
         stream = output.add_stream(codec, fps)
         if codec in HIGH_EFFICIENCY_VIDEO_CODECS:

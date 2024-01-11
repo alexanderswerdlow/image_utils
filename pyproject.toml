@@ -34,3 +34,7 @@ DEV = ["pytest"]
 
 [project.urls]
 Homepage = "https://github.com/alexanderswerdlow/image_utils"
+
+[tool.black]
+line-length = 150
+target-version = ['py310']
