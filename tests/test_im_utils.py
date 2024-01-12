@@ -157,6 +157,8 @@ def test_format(img_params):
     torch_img = img.torch
     np_img = img.np
     cv_img = img.opencv
+    torch_img_ = Im(img).torch
+    torch.allclose(torch_img, torch_img_)
 
 
 @pytest.mark.parametrize("img_params", valid_configs)

@@ -7,13 +7,13 @@ import warnings
 from enum import auto
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Callable, Iterable, Optional, Tuple, Type, TypeAlias, Union, cast
+from typing import (Callable, Iterable, Optional, Tuple, Type, TypeAlias,
+                    Union, cast)
 
 import cv2
 import numpy as np
 import torch
 import torch.nn.functional as F
-import torchvision.transforms.functional as T
 from einops import pack, rearrange, repeat
 from jaxtyping import Bool, Float, Integer
 from numpy import ndarray
@@ -103,7 +103,7 @@ class Im:
 
         if isinstance(arr, Im):
             for attr in dir(arr):
-                if not attr.startswith("__"):
+                if not attr.startswith("__") and not isinstance(getattr(type(arr), attr, None), property):
                     setattr(self, attr, getattr(arr, attr))
             return
 
@@ -158,7 +158,7 @@ class Im:
             self.channel_range = channel_range
         elif is_dtype(arr, Integer):
             assert self.arr.max() >= 0, "Integer array must be non-negative"
-            if self.arr.max() > 1:
+            if self.channels > 1 or self.arr.max() > 1:
                 self.channel_range = ChannelRange.UINT8
             else:  # We assume an integer array with 0s and 1s is a BW image
                 self.channel_range = ChannelRange.BOOL
@@ -330,6 +330,10 @@ class Im:
         else:
             img = Image.open(filepath)
         return Im(img)
+
+    @staticmethod
+    def new(h: int, w: int, color=(255, 255, 255)):
+        return Im(Image.new("RGB", (w, h), color))
 
     @_convert_to_datatype(desired_datatype=Tensor, desired_order=ChannelOrder.CHW, desired_range=ChannelRange.FLOAT)
     def resize(self, height, width, resampling_mode=InterpolationMode.BILINEAR):
