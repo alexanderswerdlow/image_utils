@@ -123,7 +123,7 @@ def test_save(img_params):
 def test_write_text(img_params):
     img = Im(get_img(**img_params))
     img.copy.write_text("test").save(get_file_path(img_params, "text"))
-
+    img.copy.write_text("test", color=(255, 255, 0), relative_font_scale=0.004).save(get_file_path(img_params, "text_scaled"))
 
 @pytest.mark.parametrize("img_params", valid_configs)
 def test_add_border(img_params):
@@ -159,6 +159,22 @@ def test_format(img_params):
     cv_img = img.opencv
     torch_img_ = Im(img).torch
     torch.allclose(torch_img, torch_img_)
+
+
+@pytest.mark.parametrize("img_params", valid_configs)
+def test_pickle(img_params):
+    import pickle
+
+    img = Im(get_img(**img_params))
+    pil_img = img.pil
+    pil_img = pil_img[0] if isinstance(pil_img, Iterable) else pil_img
+    pil_img = Im(pil_img)
+    torch_img = Im(img.torch)
+    np_img = Im(img.np)
+    cv_img = Im(img.opencv)
+    for i in [img, pil_img, torch_img, np_img, cv_img]:
+        with open(get_file_path(img_params, "pickle"), "wb") as f:
+            pickle.dump(i, f)
 
 
 @pytest.mark.parametrize("img_params", valid_configs)

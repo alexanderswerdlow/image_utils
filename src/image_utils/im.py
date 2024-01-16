@@ -7,8 +7,7 @@ import warnings
 from enum import auto
 from io import BytesIO
 from pathlib import Path
-from typing import (Callable, Iterable, Optional, Tuple, Type, TypeAlias,
-                    Union, cast)
+from typing import Callable, Iterable, Optional, Tuple, Type, TypeAlias, Union, cast
 
 import cv2
 import numpy as np
@@ -76,6 +75,10 @@ class ChannelRange(StrEnum):
     BOOL = auto()
 
 
+def identity(x):
+    return x
+
+
 class Im:
     """
     This class is a helper class to easily convert between formats (PIL/NumPy ndarray/PyTorch Tensor)
@@ -139,15 +142,17 @@ class Im:
 
         # We normalize all arrays to (B, H, W, C) and record their original shape so
         # we can re-transform then when we need to output them
+        from functools import partial
+
         if len(self.shape) == 3:
-            self.arr_transform = lambda x: rearrange(x, "() a b c -> a b c")
+            self.arr_transform = partial(rearrange, pattern="() a b c -> a b c")
         elif len(self.shape) == 4:
-            self.arr_transform = lambda x: x
+            self.arr_transform = partial(identity)
         elif len(self.shape) >= 5:
             extra_dims = self.shape[:-3]
             mapping = {k: v for k, v in zip(string.ascii_uppercase, extra_dims)}
             transform_str = f'({" ".join(sorted(list(mapping.keys())))}) a b c -> {" ".join(sorted(list(mapping.keys())))} a b c'
-            self.arr_transform = lambda x: rearrange(x, transform_str, **mapping)
+            self.arr_transform = partial(rearrange, pattern=transform_str, **mapping)  # lambda x: rearrange(x, transform_str, g)
         else:
             raise ValueError("Must be between 3-5 dims")
 
@@ -389,20 +394,25 @@ class Im:
         img.save(filepath, **flags)
 
     @_convert_to_datatype(desired_datatype=ndarray, desired_order=ChannelOrder.HWC, desired_range=ChannelRange.UINT8)
-    def write_text(self, text: str) -> Im:
+    def write_text(
+        self,
+        text: str,
+        color: Tuple[int] = (255, 0, 0),
+        relative_font_scale = 0.002,
+    ) -> Im:
         for i in range(self.arr.shape[0]):
             text_to_write = text[i] if isinstance(text, list) else text
             assert isinstance(self.arr[i], ndarray)
             im = cv2.cvtColor(cast(ndarray, self.arr[i]), cv2.COLOR_RGB2BGR)
             im = cv2.putText(
-                im,
-                text_to_write,
-                (0, im.shape[0] - 10),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.002 * min(self.arr.shape[-3:-1]),
-                (255, 0, 0),
-                max(1, round(min(self.arr.shape[-3:-1]) / 150)),
-                cv2.LINE_AA,
+                img=im,
+                text=text_to_write,
+                org=(0, im.shape[0] - 10),
+                fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                fontScale=relative_font_scale * min(self.height, self.width),
+                color=color,
+                thickness=max(1, round(min(self.height, self.width) / 150)),
+                lineType=cv2.LINE_AA,
             )
             self.arr[i] = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
 
