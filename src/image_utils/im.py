@@ -5,9 +5,11 @@ import string
 import tempfile
 import warnings
 from enum import auto
+from functools import partial
 from io import BytesIO
 from pathlib import Path
-from typing import Callable, Iterable, Optional, Tuple, Type, TypeAlias, Union, cast
+from typing import (Callable, Iterable, Optional, Tuple, Type, TypeAlias,
+                    Union, cast)
 
 import cv2
 import numpy as np
@@ -94,6 +96,7 @@ class Im:
     - Convinience is prioritized over efficiency. We make copies or perform in-place operation with little consistency. We may re-evaluate this design decision in the future.
     """
 
+    # Common ImageNet normalization values
     default_normalize_mean = [0.4265, 0.4489, 0.4769]
     default_normalize_std = [0.2053, 0.2206, 0.2578]
 
@@ -105,6 +108,7 @@ class Im:
             arr = Image.open(load_cached_from_url(arr))
 
         if isinstance(arr, Im):
+            # We allow Im(im) and make it a no-op
             for attr in dir(arr):
                 if not attr.startswith("__") and not isinstance(getattr(type(arr), attr, None), property):
                     setattr(self, attr, getattr(arr, attr))
@@ -131,7 +135,8 @@ class Im:
         else:
             raise ValueError("Must be numpy array, pillow image, or torch tensor")
 
-        if len(self.arr.shape) == 2:  # Normalize to HWC
+        # Normalize single-channel image to HWC
+        if len(self.arr.shape) == 2:
             self.arr = self.arr[..., None]
 
         # TODO: Consider normalizing to HWC order for all arrays, similar to how arr_transform works
@@ -142,8 +147,6 @@ class Im:
 
         # We normalize all arrays to (B, H, W, C) and record their original shape so
         # we can re-transform then when we need to output them
-        from functools import partial
-
         if len(self.shape) == 3:
             self.arr_transform = partial(rearrange, pattern="() a b c -> a b c")
         elif len(self.shape) == 4:
@@ -183,7 +186,7 @@ class Im:
         elif self.arr_type == Tensor:
             arr_name = "tensor"
         else:
-            raise ValueError("Must be numpy array, pillow image, or torch tensor")
+            raise ValueError("Must be numpy array or torch tensor")
 
         if is_pil(self.arr):
             shape_str = repr(self.arr)
@@ -658,7 +661,7 @@ def concat_horizontal_(im1: Im, im2: Im, spacing: int = 0, **kwargs) -> Im:
     return Im(pack([im1_arr, im2_arr], "h * c")[0])
 
 
-def concat_vertical_(im1: Im, im2: Im, spacing: int = 0, fill: Optional[tuple[int]] = None, **kwargs) -> Im:
+def concat_vertical_(im1: Im, im2: Im, spacing: int = 0, **kwargs) -> Im:
     im1_arr = get_arr_hwc(im1)
     im2_arr = get_arr_hwc(im2)
     if im1.width != im2.width:
