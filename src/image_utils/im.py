@@ -282,7 +282,10 @@ class Im:
 
     def get_pil(self) -> Union[Image.Image, list[Image.Image]]:
         if len(self.shape) == 3:
-            return Image.fromarray(self.get_np())
+            _img = self.get_np()
+            if _img.shape[-1] == 1:
+                _img = rearrange(_img, "... () -> ...")
+            return Image.fromarray(_img)
         else:
             img = rearrange(self.get_np(), "... h w c -> (...) h w c")
             if img.shape[0] == 1:
