@@ -546,6 +546,7 @@ class Im:
     def to(self, device: torch.device):
         assert isinstance(self.arr, Tensor), "Can only convert to device if array is a Tensor"
         self.arr = self.arr.to(device)
+        self.device = self.arr.device
         return self
 
     @staticmethod
