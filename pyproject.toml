@@ -24,7 +24,8 @@ dependencies = [
     "einops>=0.6.0",
     "StrEnum>=0.4.9",
     "lovely-tensors>=0.1.14",
-    "lovely-numpy>=0.2.8"
+    "lovely-numpy>=0.2.8",
+    "jaxtyping>=0.2.25"
 ]
 
 [project.optional-dependencies]

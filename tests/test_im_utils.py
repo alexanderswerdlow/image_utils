@@ -118,12 +118,16 @@ def test_save(img_params):
     img = Im(get_img(**img_params))
     img.copy.save(get_file_path(img_params, "save"))
 
+@pytest.mark.parametrize("img_params", valid_configs)
+def test_grid(img_params):
+    img = Im(get_img(**img_params))
+    img.grid().save(get_file_path(img_params, "save"))
 
 @pytest.mark.parametrize("img_params", valid_configs)
 def test_write_text(img_params):
     img = Im(get_img(**img_params))
     img.copy.write_text("test").save(get_file_path(img_params, "text"))
-    img.copy.write_text("test", color=(255, 255, 0), relative_font_scale=0.004).save(get_file_path(img_params, "text_scaled"))
+    img.copy.write_text("This is a typing test.", color=(8, 128, 82), size=1.0, thickness=2.0).save(get_file_path(img_params, "text_scaled"))
 
 @pytest.mark.parametrize("img_params", valid_configs)
 def test_add_border(img_params):

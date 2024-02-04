@@ -25,6 +25,7 @@ from torchvision.transforms.functional import InterpolationMode, resize
 
 from image_utils.file_utils import get_date_time_str, load_cached_from_url
 from image_utils.standalone_image_utils import pca, torch_to_numpy
+from math import ceil
 
 if int(Image.__version__.split(".")[0]) >= 9 and int(Image.__version__.split(".")[1]) > 0:  # type: ignore
     resampling_module = Image.Resampling
@@ -378,6 +379,12 @@ class Im:
             filepath.parent.mkdir(parents=True, exist_ok=True)
 
         return filepath
+    
+    @_convert_to_datatype(desired_datatype=Tensor, desired_order=ChannelOrder.CHW, desired_range=ChannelRange.FLOAT)
+    def grid(self) -> Im:
+        from torchvision import utils
+        img = utils.make_grid(self.arr)
+        return Im(img)
 
     def save(self, filepath: Path = Path(get_date_time_str()), filetype="png", optimize=False, quality=None):
         img = self.get_torch()
@@ -385,13 +392,9 @@ class Im:
         filepath = Im._save_data(filepath, filetype)
 
         if len(img.shape) > 3:
-            from torchvision import utils
-
-            img = rearrange(img, "... h w c -> (...) h w c")
-            img = utils.make_grid(img)
-            img = Im(img).get_pil()
-        else:
-            img = self.get_pil()
+            self = self.grid()
+    
+        img = self.get_pil()
 
         assert isinstance(img, Image.Image)
 
@@ -403,24 +406,36 @@ class Im:
     def write_text(
         self,
         text: str,
-        color: Tuple[int] = (255, 0, 0),
-        relative_font_scale = 0.002,
+        color: tuple[int, int, int] = (255, 0, 0),
+        position: tuple[float, float] = (0.9725, 0.01), # yx position in relative coordinates [0, 1]. Defaults to bottom left.
+        size: float = 1.0,
+        thickness: float = 1.0,
+        font: int = cv2.FONT_HERSHEY_SIMPLEX,
+        relative_font_scale: Optional[float] = None,
     ) -> Im:
+        
+        FONT_SCALE = 3e-3 * size
+        THICKNESS_SCALE = 2e-3 * thickness
+    
+        if relative_font_scale is not None:
+            warnings.warn("relative_font_scale is deprecated. Use font_scale instead.")
+            FONT_SCALE = relative_font_scale
+
         for i in range(self.arr.shape[0]):
             text_to_write = text[i] if isinstance(text, list) else text
             assert isinstance(self.arr[i], ndarray)
-            im = cv2.cvtColor(cast(ndarray, self.arr[i]), cv2.COLOR_RGB2BGR)
+            # We could convert to BGR and back but since we specify colors in RGB, we don't need to
             im = cv2.putText(
-                img=im,
+                img=self.arr[i],
                 text=text_to_write,
-                org=(0, im.shape[0] - 10),
-                fontFace=cv2.FONT_HERSHEY_SIMPLEX,
-                fontScale=relative_font_scale * min(self.height, self.width),
+                org=(int(position[1] * self.width), int(position[0] * self.height)),
+                fontFace=font,
+                fontScale=FONT_SCALE * min(self.height, self.width),
                 color=color,
-                thickness=max(1, round(min(self.height, self.width) / 150)),
+                thickness=ceil(min(self.height, self.width) * THICKNESS_SCALE),
                 lineType=cv2.LINE_AA,
-            )
-            self.arr[i] = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
+            ) # type: ignore
+            self.arr[i] = im
 
         return self
 
