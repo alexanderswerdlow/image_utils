@@ -426,7 +426,7 @@ class Im:
             assert isinstance(self.arr[i], ndarray)
             # We could convert to BGR and back but since we specify colors in RGB, we don't need to
             im = cv2.putText(
-                img=self.arr[i],
+                img=np.ascontiguousarray(self.arr[i]), # 
                 text=text_to_write,
                 org=(int(position[1] * self.width), int(position[0] * self.height)),
                 fontFace=font,

@@ -12,7 +12,8 @@ save_path = Path(__file__).parent / "output"
 
 
 def get_img(
-    img_type: Union[np.ndarray, Image.Image, torch.Tensor], hwc_order=True, dtype=None, normalize=False, device=None, bw_img=False, batch_shape=None
+    img_type: Union[np.ndarray, Image.Image, torch.Tensor], hwc_order=True, dtype=None, normalize=False, device=None, bw_img=False, batch_shape=None,
+    contiguous: bool = True,
 ):
     if bw_img:
         if dtype is None:
@@ -28,6 +29,12 @@ def get_img(
     img = np.array(img)
     if img_type == torch.Tensor:
         img = torch.from_numpy(img)
+
+    if not contiguous:
+        if img_type == torch.Tensor:
+            img = torch.randn((np.prod(img.shape),)).view(*img.shape)
+        else:
+            img = np.random.randn(np.prod(img.shape)).reshape(*img.shape)
 
     if not hwc_order:
         img = rearrange(img, "h w c -> c h w")
@@ -76,25 +83,15 @@ def test_single_arg_even(dim_size):
 valid_configs = [
     {"img_type": Image.Image},
     {"img_type": np.ndarray},
-    {
-        "img_type": np.ndarray,
-        "hwc_order": False,
-    },
-    {
-        "img_type": np.ndarray,
-        "dtype": np.float16,
-    },
+    {"img_type": np.ndarray, "contiguous": False},
+    {"img_type": np.ndarray, "hwc_order": False,},
+    {"img_type": np.ndarray, "dtype": np.float16,},
     {"img_type": np.ndarray, "hwc_order": False, "dtype": np.float16},
     {"img_type": np.ndarray, "hwc_order": False, "dtype": np.float32, "normalize": True},
     {"img_type": torch.Tensor},
-    {
-        "img_type": torch.Tensor,
-        "hwc_order": False,
-    },
-    {
-        "img_type": torch.Tensor,
-        "dtype": torch.float32,
-    },
+    {"img_type": np.ndarray, "contiguous": False},
+    {"img_type": torch.Tensor, "hwc_order": False,},
+    {"img_type": torch.Tensor, "dtype": torch.float32,},
     {"img_type": torch.Tensor, "hwc_order": False, "dtype": torch.float16},
     {"img_type": torch.Tensor, "hwc_order": False, "dtype": torch.bfloat16},
     {"img_type": torch.Tensor, "hwc_order": False, "dtype": torch.float, "normalize": True},
@@ -118,16 +115,19 @@ def test_save(img_params):
     img = Im(get_img(**img_params))
     img.copy.save(get_file_path(img_params, "save"))
 
+
 @pytest.mark.parametrize("img_params", valid_configs)
 def test_grid(img_params):
     img = Im(get_img(**img_params))
     img.grid().save(get_file_path(img_params, "save"))
+
 
 @pytest.mark.parametrize("img_params", valid_configs)
 def test_write_text(img_params):
     img = Im(get_img(**img_params))
     img.copy.write_text("test").save(get_file_path(img_params, "text"))
     img.copy.write_text("This is a typing test.", color=(8, 128, 82), size=1.0, thickness=2.0).save(get_file_path(img_params, "text_scaled"))
+
 
 @pytest.mark.parametrize("img_params", valid_configs)
 def test_add_border(img_params):
