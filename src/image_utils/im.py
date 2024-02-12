@@ -604,7 +604,7 @@ class Im:
 
 
 def concat_variable(concat_func: Callable[..., Im], *args: Im, **kwargs) -> Im:
-    if len(args) == 1 and isinstance(args[0], Iterable):
+    if len(args) == 1 and isinstance(args[0], Iterable) and not isinstance(args[0], (Im, ndarray, Tensor)):
         args = args[0]
 
     output_img = None
