@@ -23,15 +23,14 @@ dependencies = [
     "pillow>=9.0.0",
     "einops>=0.6.0",
     "StrEnum>=0.4.9",
-    "lovely-tensors>=0.1.14",
-    "lovely-numpy>=0.2.8",
     "jaxtyping>=0.2.25"
 ]
 
 [project.optional-dependencies]
-VIDEO = ["av>=10.0.0", "imageio[ffmpeg]"]
+VIDEO = ["av>=10.0.0", "imageio[ffmpeg]>=2.23.0"]
 PROC = ["joblib>=1.2.0"]
-DEV = ["pytest"]
+DEV = ["pytest", "lovely-tensors>=0.1.14", "lovely-numpy>=0.2.8"]
+ALL = ["image_utils[VIDEO,PROC,DEV]"]
 
 [project.urls]
 Homepage = "https://github.com/alexanderswerdlow/image_utils"

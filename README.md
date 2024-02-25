@@ -1,12 +1,33 @@
 # Image Utils
 
-_Warning: This is an alpha level library and was built for my personal use. The API is unstable and subject to change. If you use this library as part of another application, consider pinning to a specific commit, especially if you are using this library for preprocessing._
+Are you tired of having to constantly switch between NumPy arrays, PyTorch Tensors, and PIL images? Simply wrap your NumPy array, PyTorch Tensor, or PIL image with `Im()` and let it handle conversions between formats.
 
-Are you tired of having to constantly switch between NumPy arrays, PyTorch Tensors, and PIL images? Gone are the days of arr.transpose(1, 2, 0) or arr.permute(2, 0, 1) with image utils.
+For example, we can replace this:
+```
+numpy_img = (torch.rand(10, 3, 256, 256).permute(0, 2, 3, 1).detach().float().cpu().numpy() * 255).astype(np.uint8)
+Image.fromarray(numpy_img[0]).save('output.png')
+```
 
-Simply wrap your NumPy array, PyTorch Tensor, or PIL image with `Im()` and let it handle conversions between formats.
+With this:
+```
+Im(torch.rand(10, 3, 256, 256)).save()
+```
+
+The powerful part is not that this works for this specific input shape/dtype/range combination, but [almost] any combination.
+
+## Features
+
+- Supports NumPy arrays, PyTorch Tensors, and PIL Images
+- Handles arbitrary shapes `[..., H, W, C] or [..., C, H, W]` and preserves the input shape, batching all necessary transformations.
+- Handles all common data types `[Float, Integer, Boolean]`, and Ranges `[0, 1], [0, 255]`
+- Vertical/Horizontal concatenation of images with automatic padding, device conversion, and even batching
+- Writing text on images
+- Video encoding `[mp4, gif]` of a sequence of images
+- Image normalization, resizing, and much more!
 
 ## Installation
+
+_Warning_: The library is currently in alpha and the API is subject to change. If you use this library as part of another application, consider pinning to a specific commit, adding as a submodule, or even just taking the `src/image_utils/im.py` file as it works standalone!
 
 This package is not currently on PyPI. To install, use the git url:
 
@@ -19,17 +40,21 @@ pip install git+https://github.com/alexanderswerdlow/image_utils.git
 Below is an example of using the primary `Im` class:
 
 ```
-import cv2
-image = cv2.imread("tests/flower.jpg") # (h w c), np.uint8, [0, 255]
-
 from image_utils import Im
-image = Im(image).get_torch # (c h w), torch.float32, [0, 1]
 
-from PIL import Image
-image = Im(image).get_pil # PIL Image.Image
+img = np.random.randint(0, 256, (2, 10, 256, 256, 3), np.uint8)
+img = Im(img)
+img = img.write_text("Hello World!") # Writes the text on all 20 images
+img = img.scale(2) # Scales image, preserving aspect ratio. Use resize(), scale_to_width(), or scale_to_width() for more control.
+img = img.crop(200, 300, 0, 100)
+
+# The Im class supports regular array slicing and unpacking! Here we concatenate the two [10, ...] into a single [10, ...] sequence of images
+img = Im.concat_horizontal(*img, spacing=15) # Concatenation even works with varying shapes with automatic padding!
+img.save() # Batched images are saved as a grid by default. Uses a timestamp for the name and PNG format by default. 
+img.save_video() # We now have a 10 frame video!
 ```
 
-_Note:_ The `Im` class tries to preserve the input format when possible, but many functions will convert the input data to a different datatype (e.g. float -> uint8) causing loss of precision. For visualization this should not be an issue, but take care when using the library for pre-processing.
+## Extra Goodies
 
 Another handy feature is provided by `library_ops`. This overrides the `__repr__` for NumPy arrays and PyTorch Tensors. For example:
 
@@ -55,14 +80,22 @@ tensor([[ 0.782,  1.755,  0.975,  2.467, -0.646],
 
 Instead of only seeing the array contents, we can now view the shape, dtype, device, and more. `finite` or `infinite` signifies whether the array contains any `NaN` of `Inf` values.
 
+If you want a dedicated library for this, check out [lovely-tensors](https://github.com/xl0/lovely-tensors)!
+
+## When you should use image_utils
+
+If you need to quickly visualize and work with images in a flexible way and aren't concerned with maximum efficiency
+
+## When you shouldn't use image_utils
+
+Currently, you shouldn't use image_utils in your pre-processing pipeline for a machine learning model. There is no guarantee that a given operation [e.g., resize] will have bit-perfect consistency between versions. Furthermore, image_utils focuses on flexibility over a wide-range of formats which in practice means frequent internal conversions and thus incurs additional overhead.
+
 ## Tests
 
-To run tests run `pytest`
+*Note*: If you want to know more about how to use specific methods or which formats we test on, check out `tests/test_im_utils.py`.
 
-To break with pdb on error, run: `pytest --pdb -s`
+To run all tests, simply run: `pytest`
 
-To run a specific test run: `pytest -k 'test_concat' --pdb -s`
+To break with pdb on error, use: `pytest --pdb -s`
 
-## Alternate Libaries
-
-https://github.com/xl0/lovely-tensors
+To run a specific test use: `pytest -k 'test_concat' --pdb -s`
