@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import colorsys
+import io
 from typing import Optional
 
 import numpy as np
@@ -10,15 +11,8 @@ from PIL import Image
 from torch import Tensor
 
 
-def torch_to_numpy(arr: Tensor):
-    # Sadly, NumPy does not support these types
-    if arr.dtype == torch.bfloat16 or arr.dtype == torch.float16:
-        return arr.float().cpu().detach().numpy()
-    else:
-        return arr.cpu().detach().numpy()
-
-
 def get_layered_image_from_binary_mask(masks, flip=False):
+    from image_utils.im import torch_to_numpy
     if torch.is_tensor(masks):
         masks = torch_to_numpy(masks)
     if flip:
@@ -130,3 +124,30 @@ def pca(embeddings: Tensor, num_components: int = 3, principal_components: Optio
     embeddings = embeddings.view(new_shape)
 
     return embeddings
+
+def hist(arr, save: bool = True, use_im: bool = True, **kwargs):
+    from lovely_numpy import lo as np_lo
+
+    if isinstance(arr, torch.Tensor):
+        arr = arr.detach().cpu().numpy()
+
+    fig = np_lo(arr, **kwargs).plt.fig
+
+    with io.BytesIO() as buff:
+        fig.savefig(buff, format='raw')
+        buff.seek(0)
+        data = np.frombuffer(buff.getvalue(), dtype=np.uint8)
+    w, h = fig.canvas.get_width_height()
+    img = data.reshape((int(h), int(w), -1))
+    img = img.copy()
+
+    if use_im:
+        from image_utils import Im
+        img = Im(img)
+        if save:
+            img.save()
+    else:
+        if save:
+            Image.fromarray(img).save('hist.png')
+        
+    return img

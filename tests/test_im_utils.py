@@ -12,7 +12,13 @@ save_path = Path(__file__).parent / "output"
 
 
 def get_img(
-    img_type: Union[np.ndarray, Image.Image, torch.Tensor], hwc_order=True, dtype=None, normalize=False, device=None, bw_img=False, batch_shape=None,
+    img_type: Union[np.ndarray, Image.Image, torch.Tensor],
+    hwc_order=True,
+    dtype=None,
+    normalize=False,
+    device=None,
+    bw_img=False,
+    batch_shape=None,
     contiguous: bool = True,
 ):
     if bw_img:
@@ -84,14 +90,27 @@ valid_configs = [
     {"img_type": Image.Image},
     {"img_type": np.ndarray},
     {"img_type": np.ndarray, "contiguous": False},
-    {"img_type": np.ndarray, "hwc_order": False,},
-    {"img_type": np.ndarray, "dtype": np.float16,},
+    {
+        "img_type": np.ndarray,
+        "hwc_order": False,
+    },
+    {
+        "img_type": np.ndarray,
+        "dtype": np.float16,
+    },
     {"img_type": np.ndarray, "hwc_order": False, "dtype": np.float16},
     {"img_type": np.ndarray, "hwc_order": False, "dtype": np.float32, "normalize": True},
     {"img_type": torch.Tensor},
     {"img_type": np.ndarray, "contiguous": False},
-    {"img_type": torch.Tensor, "hwc_order": False,},
-    {"img_type": torch.Tensor, "dtype": torch.float32,},
+    {
+        "img_type": torch.Tensor,
+        "hwc_order": False,
+    },
+    {
+        "img_type": torch.Tensor,
+        "dtype": torch.float32,
+    },
+    {"img_type": np.ndarray, "hwc_order": False, "batch_shape": {"a": 2, "b": 3, "c": 4}},
     {"img_type": torch.Tensor, "hwc_order": False, "dtype": torch.float16},
     {"img_type": torch.Tensor, "hwc_order": False, "dtype": torch.bfloat16},
     {"img_type": torch.Tensor, "hwc_order": False, "dtype": torch.float, "normalize": True},
@@ -186,9 +205,6 @@ def test_concat(img_params):
     img = Im(get_img(**img_params))
 
     input_data = [img, img, img]
-    if img_params.get("batch_shape", False):
-        return
-
     # Test the standard way
     Im.concat_horizontal(*input_data, spacing=15).save(get_file_path(img_params, "concat_horizontal_spacing"))
     Im.concat_vertical(*input_data, spacing=0)
@@ -205,14 +221,15 @@ def test_concat(img_params):
     Im.concat_vertical(*[x.arr for x in input_data], spacing=5)
 
     # Test unequal sizes in both the direction of concat and not
-    Im.concat_vertical(*[img.np, img.np[: img.np.shape[0] // 2], img.np[img.np.shape[0] // 2 :]], spacing=5)
-    Im.concat_vertical(*[img.np, img.np[:, : img.np.shape[0] // 2], img.np[:, img.np.shape[0] // 2 :]], spacing=5)
-    Im.concat_vertical(*[img.np, img.np[: img.np.shape[0] // 2, : img.np.shape[0] // 2]], spacing=5)
-    Im.concat_vertical(*[img.np, img.np[: img.np.shape[0] // 2]], spacing=5)
+    h_ = img.np.shape[-3]
+    Im.concat_vertical(*[img.np, img.np[..., : h_ // 2, :, :], img.np[..., h_ // 2 :, :, :]], spacing=5)
+    Im.concat_vertical(*[img.np, img.np[..., :, : h_ // 2], img.np[..., :, h_ // 2 :, :]], spacing=5)
+    Im.concat_vertical(*[img.np, img.np[..., : h_ // 2, : h_ // 2]], spacing=5)
+    Im.concat_vertical(*[img.np, img.np[..., : h_ // 2]], spacing=5)
 
-    Im.concat_horizontal(*[img.np, img.np[: img.np.shape[0] // 2], img.np[img.np.shape[0] // 2 :]], spacing=5)
-    Im.concat_horizontal(*[img.np, img.np[: img.np.shape[0] // 2, : img.np.shape[0] // 2], img.np[:, img.np.shape[0] // 2 :]], spacing=5)
-    Im.concat_horizontal(*[img.np, img.np[:, : img.np.shape[0] // 2]], spacing=5)
+    Im.concat_horizontal(*[img.np, img.np[..., : h_ // 2, :, :], img.np[..., h_ // 2 :, :, :]], spacing=5)
+    Im.concat_horizontal(*[img.np, img.np[..., : h_ // 2, : h_ // 2, :], img.np[..., :, h_ // 2 :, :]], spacing=5)
+    Im.concat_horizontal(*[img.np, img.np[..., :, : h_ // 2, :]], spacing=5)
 
 
 @pytest.mark.parametrize("img_params", valid_configs[:4])
@@ -230,14 +247,47 @@ def test_encode_video(img_params, format, frames, fps):
 
 @pytest.mark.parametrize("img_params", valid_configs)
 def test_complicated(img_params):
-    img = Im(get_img(**img_params))
-    img = img.scale(0.5).resize(128, 128)
-    img = img.add_border(border=5, color=(128, 128, 128)).normalize(mean=(0.5, 0.75, 0.5), std=(0.1, 0.01, 0.01))
+    img = get_img(**img_params)
+    orig_shape = None
+    if isinstance(img, (torch.Tensor, np.ndarray)):
+        orig_shape = img.shape
+    img = Im(img)
+    img = img.scale(0.5).resize(128, 128).crop(10, 120, 10, 120).write_text("Hello world!")
+    img = img.add_border(border=50, color=(128, 128, 128)).normalize(mean=(0.5, 0.75, 0.5), std=(0.1, 0.01, 0.01))
+    img = img.concat_horizontal(img, img, spacing=15).concat_vertical(img, img, spacing=15)
     img = img.torch
-    print(img.min(), img.max(), img.shape)
     img = Im(img).denormalize(mean=(0.5, 0.75, 0.5), std=(0.1, 0.01, 0.01))
     img = img.colorize()
     img.save(get_file_path(img_params, "complicated"))
+    if orig_shape is not None:
+        assert img.torch.shape[:-3] == orig_shape[:-3]
 
 
-# image = Im('https://raw.githubusercontent.com/SysCV/sam-hq/main/demo/input_imgs/example8.png').pil
+@pytest.mark.parametrize(
+    "img_params",
+    [
+        {"img_type": torch.Tensor, "hwc_order": False, "dtype": torch.float16, "batch_shape": {"a": 2}},
+        {"img_type": torch.Tensor, "hwc_order": False, "dtype": torch.bfloat16, "batch_shape": {"a": 2, "b": 3, "c": 4}},
+        {"img_type": torch.Tensor, "hwc_order": False, "dtype": torch.float, "normalize": True, "batch_shape": {"a": 2, "b": 3}},
+        {"img_type": np.ndarray, "batch_shape": {"a": 2}},
+        {"img_type": np.ndarray, "batch_shape": {"a": 2, "b": 3, "c": 4}},
+        {"img_type": np.ndarray, "batch_shape": {"a": 2, "b": 3}},
+    ],
+)
+def test_slicing(img_params):
+    img = get_img(**img_params)
+    img = Im(img)
+    h_ = img.np.shape[-3]
+    if img_params.get('hwc_order', True):
+        assert np.allclose(img.np[..., : h_ // 2, :10, :], img[..., : h_ // 2, :10, :].np)
+        assert torch.allclose(img.torch[..., :, : h_ // 2, :10], img[..., : h_ // 2, :10, :].torch)
+    else:
+        assert np.allclose(img.np[..., :, :h_ // 2, :10, :], img[..., :, : h_ // 2, :10].np)
+        assert torch.allclose(img.torch[..., :, : h_ // 2, :10], img[..., :, : h_ // 2, :10].torch)
+
+
+@pytest.mark.parametrize("img_params", valid_configs)
+def test_crop(img_params):
+    img = Im(get_img(**img_params))
+    img = img.crop(0, 128, 0, 128)
+    img.save(get_file_path(img_params, "complicated"))
