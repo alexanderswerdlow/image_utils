@@ -53,6 +53,10 @@ import copy
 normal_repr_ = np.ndarray.__str__
 np.set_string_function(lambda self: generic_print(self, normal_repr_(self)), repr=True)
 
+def disable():
+    torch.set_printoptions(profile="default")
+    torch.Tensor.__repr__ = normal_repr
+    np.set_string_function(normal_repr_, repr=True)
 
 def set_random_seeds():
     torch.manual_seed(0)
