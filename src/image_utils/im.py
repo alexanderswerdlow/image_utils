@@ -39,6 +39,11 @@ ImArr: TypeAlias = Union[ndarray, Tensor]  # The actual array itself
 ImArrType: TypeAlias = Type[Union[ndarray, Tensor]]  # The object itself is just a type
 ImDtype: TypeAlias = Union[torch.dtype, np.dtype]
 
+enable_warnings = os.getenv("IMAGE_UTILS_DISABLE_WARNINGS") is not None
+
+def warning_guard(message: str):
+    if not enable_warnings:
+        warnings.warn(message, stacklevel=2)
 
 def is_dtype(arr: ImArr, dtype: Union[Float, Integer, Bool]):
     return isinstance(arr, dtype[ndarray, "..."]) or isinstance(arr, dtype[Tensor, "..."])
@@ -131,7 +136,7 @@ class Im:
             self.device = self.arr.device
             self.arr_type = Tensor
             if self.arr.requires_grad:
-                warnings.warn("Input tensor has requires_grad=True. We are detaching the tensor.")
+                warning_guard("Input tensor has requires_grad=True. We are detaching the tensor.")
                 self.arr = self.arr.detach()
         else:
             raise ValueError("Must be numpy array, pillow image, or torch tensor")
@@ -424,7 +429,7 @@ class Im:
         new_im = self.copy
     
         if relative_font_scale is not None:
-            warnings.warn("relative_font_scale is deprecated. Use font_scale instead.")
+            warning_guard("relative_font_scale is deprecated. Use font_scale instead.")
             FONT_SCALE = relative_font_scale
 
         for i in range(new_im.arr.shape[0]):
@@ -611,7 +616,7 @@ def concat_variable(concat_func: Callable[..., Im], *args: Im, **kwargs) -> Im:
             img = Im(img)
 
         if img.channel_range == ChannelRange.BOOL:
-            warnings.warn("Concatenating boolean images. We are converting to NumPy.", stacklevel=2)
+            warning_guard("Concatenating boolean images. We are converting to NumPy.")
             img = Im(img.np)
 
         if output_img is None:
@@ -621,7 +626,7 @@ def concat_variable(concat_func: Callable[..., Im], *args: Im, **kwargs) -> Im:
                 img = img._convert(output_img.arr_type, output_img.channel_order, output_img.channel_range)
 
             if output_img.device != img.device:
-                warnings.warn("Concatenating images on different devices. We are moving both to CPU.", stacklevel=2)
+                warning_guard("Concatenating images on different devices. We are moving both to CPU.")
                 img = img.to(torch.device("cpu"))
                 output_img = output_img.to(torch.device("cpu"))
 
@@ -670,7 +675,7 @@ def concat_horizontal_(im1: Im, im2: Im, spacing: int = 0, **kwargs) -> Im:
     im1_arr = get_arr_hwc(im1)
     im2_arr = get_arr_hwc(im2)
     if im1.height != im2.height:
-        warnings.warn(f"Images have different heights: {im1.height} and {im2.height}. Padding to match height.")
+        warning_guard(f"Images have different heights: {im1.height} and {im2.height}. Padding to match height.")
         if im1.height > im2.height:
             new_im2_arr = new_like(im1_arr, (*im1_arr.shape[:-2], im2_arr.shape[-2], *im2_arr.shape[-1:]), **kwargs)
             new_im2_arr[..., :im2.height, :, :] = im2_arr
@@ -693,7 +698,7 @@ def concat_vertical_(im1: Im, im2: Im, spacing: int = 0, **kwargs) -> Im:
     im1_arr = get_arr_hwc(im1)
     im2_arr = get_arr_hwc(im2)
     if im1.width != im2.width:
-        warnings.warn(f"Images have different widths: {im1.width} and {im2.width}. Padding to match width.")
+        warning_guard(f"Images have different widths: {im1.width} and {im2.width}. Padding to match width.")
         if im1.width > im2.width:
             new_im2_arr = new_like(im1_arr, (*im2_arr.shape[:-2], im1_arr.shape[-2], *im2_arr.shape[-1:]), **kwargs)
             new_im2_arr[..., :, : im2.width, :] = im2_arr
