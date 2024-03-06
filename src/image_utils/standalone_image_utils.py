@@ -22,7 +22,8 @@ def get_layered_image_from_binary_mask(masks, flip=False):
     
     nonzero_channels = np.apply_over_axes(np.sum, masks, [0,1]).squeeze(0).squeeze(0) > 0
     colors = np.zeros((masks.shape[2], 3), dtype=np.uint8)
-    colors[nonzero_channels] = list(get_color(nonzero_channels.sum()))
+    if nonzero_channels.sum() > 0:
+        colors[nonzero_channels] = list(get_color(nonzero_channels.sum()))
     
     img = np.zeros((*masks.shape[:2], 3))
     for i in range(masks.shape[2]):
