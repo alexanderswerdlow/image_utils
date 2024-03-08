@@ -11,7 +11,7 @@ from PIL import Image
 from torch import Tensor
 
 
-def get_layered_image_from_binary_mask(masks, flip=False):
+def get_layered_image_from_binary_mask(masks, flip=False, override_colors=None, colormap='gist_rainbow'):
     from image_utils.im import torch_to_numpy
     if torch.is_tensor(masks):
         masks = torch_to_numpy(masks)
@@ -23,11 +23,13 @@ def get_layered_image_from_binary_mask(masks, flip=False):
     nonzero_channels = np.apply_over_axes(np.sum, masks, [0,1]).squeeze(0).squeeze(0) > 0
     colors = np.zeros((masks.shape[2], 3), dtype=np.uint8)
     if nonzero_channels.sum() > 0:
-        colors[nonzero_channels] = list(get_color(nonzero_channels.sum()))
+        colors[nonzero_channels] = list(get_color(nonzero_channels.sum(), colormap=colormap))
     
     img = np.zeros((*masks.shape[:2], 3))
     for i in range(masks.shape[2]):
         img[masks[..., i]] = colors[i]
+        if override_colors is not None and i in override_colors:
+            img[masks[..., i]] = override_colors[i]
 
     return Image.fromarray(img.astype(np.uint8))
 
@@ -50,10 +52,10 @@ def encode_binary_labels(masks):
     bits = np.power(2, np.arange(len(masks), dtype=np.int32))
     return (masks.astype(np.int32) * bits.reshape(-1, 1, 1)).sum(0)
 
-def get_color(max_value: int, colormap='spring'):
+def get_color(max_value: int, colormap='gist_rainbow'):
     import matplotlib.pyplot as plt
     import matplotlib.colors as mcolors
-    colormap = plt.get_cmap('gist_rainbow')  # Pink is 0, Yellow is 1
+    colormap = plt.get_cmap(colormap)  # Pink is 0, Yellow is 1
     colors = [mcolors.to_rgb(colormap(i / max_value)) for i in range(max_value)]  # Generate colors
     return (np.array(colors) * 255).astype(int).tolist()
 
