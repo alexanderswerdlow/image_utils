@@ -669,11 +669,43 @@ def concat_along_dim(arr_1: ImArr, arr_2: ImArr, dim: int):
     else:
         raise ValueError("Must be numpy array or torch tensor")
 
+def broadcast_arrays(im1_arr, im2_arr):
+    """
+    Takes [..., H, W, C] and [..., H, W, C] and broadcasts them to the same shape.
+    """
+    if isinstance(im1_arr, torch.Tensor):
+        expand_func = lambda x, shape: x.expand(shape)
+    elif isinstance(im1_arr, np.ndarray):
+        expand_func = np.broadcast_to
+    else:
+        raise ValueError("Unsupported array type.")
+    
+    im1_shape, im2_shape = im1_arr.shape, im2_arr.shape
+
+    if len(im1_shape) != len(im2_shape): # Check if the number of dimensions are different
+        warning_guard("Attempting to concat images with different numbers of leading dimensions. Broadcasting...")
+        if len(im1_shape) > len(im2_shape):
+            im2_arr = expand_func(im2_arr, im1_shape) # Broadcast im2 to match im1
+        else:
+            im1_arr = expand_func(im1_arr,im2_shape) # Broadcast im1 to match im2
+    else: # Same number of dimensions
+        if im1_shape != im2_shape:
+            if im1_shape[0] != im2_shape[0] and im1_shape[0] != 1 and im2_shape[0] != 1:
+                raise ValueError("Error: Cannot broadcast arrays with incompatible leading dimensions.")
+            warning_guard("Attempting to concat images with batch sizes. Broadcasting...")
+            if im1_shape[0] < im2_shape[0]:
+                im1_arr = expand_func(im1_arr,im2_shape) # Broadcast im1 to match im2
+            elif im1_shape[0] > im2_shape[0]:
+                im2_arr = expand_func(im2_arr,im1_shape) # Broadcast im2 to match im1
+    
+    return im1_arr, im2_arr
 
 def concat_horizontal_(im1: Im, im2: Im, spacing: int = 0, **kwargs) -> Im:
     # We convert to HWC but allow for tensor/ndarray with different shapes/dtypes
     im1_arr = get_arr_hwc(im1)
     im2_arr = get_arr_hwc(im2)
+    im1_arr, im2_arr = broadcast_arrays(im1_arr, im2_arr)
+
     if im1.height != im2.height:
         warning_guard(f"Images have different heights: {im1.height} and {im2.height}. Padding to match height.")
         if im1.height > im2.height:
@@ -697,6 +729,7 @@ def concat_vertical_(im1: Im, im2: Im, spacing: int = 0, **kwargs) -> Im:
     # We convert to HWC but allow for tensor/ndarray with different shapes/dtypes
     im1_arr = get_arr_hwc(im1)
     im2_arr = get_arr_hwc(im2)
+    im1_arr, im2_arr = broadcast_arrays(im1_arr, im2_arr)
     if im1.width != im2.width:
         warning_guard(f"Images have different widths: {im1.width} and {im2.width}. Padding to match width.")
         if im1.width > im2.width:
