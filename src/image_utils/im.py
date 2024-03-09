@@ -39,6 +39,11 @@ ImArr: TypeAlias = Union[ndarray, Tensor]  # The actual array itself
 ImArrType: TypeAlias = Type[Union[ndarray, Tensor]]  # The object itself is just a type
 ImDtype: TypeAlias = Union[torch.dtype, np.dtype]
 
+enable_warnings = os.getenv("IMAGE_UTILS_DISABLE_WARNINGS") is not None
+
+def warning_guard(message: str):
+    if not enable_warnings:
+        warnings.warn(message, stacklevel=2)
 
 def is_dtype(arr: ImArr, dtype: Union[Float, Integer, Bool]):
     return isinstance(arr, dtype[ndarray, "..."]) or isinstance(arr, dtype[Tensor, "..."])
@@ -131,7 +136,7 @@ class Im:
             self.device = self.arr.device
             self.arr_type = Tensor
             if self.arr.requires_grad:
-                warnings.warn("Input tensor has requires_grad=True. We are detaching the tensor.")
+                warning_guard("Input tensor has requires_grad=True. We are detaching the tensor.")
                 self.arr = self.arr.detach()
         else:
             raise ValueError("Must be numpy array, pillow image, or torch tensor")
@@ -424,7 +429,7 @@ class Im:
         new_im = self.copy
     
         if relative_font_scale is not None:
-            warnings.warn("relative_font_scale is deprecated. Use font_scale instead.")
+            warning_guard("relative_font_scale is deprecated. Use font_scale instead.")
             FONT_SCALE = relative_font_scale
 
         for i in range(new_im.arr.shape[0]):
@@ -611,7 +616,7 @@ def concat_variable(concat_func: Callable[..., Im], *args: Im, **kwargs) -> Im:
             img = Im(img)
 
         if img.channel_range == ChannelRange.BOOL:
-            warnings.warn("Concatenating boolean images. We are converting to NumPy.", stacklevel=2)
+            warning_guard("Concatenating boolean images. We are converting to NumPy.")
             img = Im(img.np)
 
         if output_img is None:
@@ -621,7 +626,7 @@ def concat_variable(concat_func: Callable[..., Im], *args: Im, **kwargs) -> Im:
                 img = img._convert(output_img.arr_type, output_img.channel_order, output_img.channel_range)
 
             if output_img.device != img.device:
-                warnings.warn("Concatenating images on different devices. We are moving both to CPU.", stacklevel=2)
+                warning_guard("Concatenating images on different devices. We are moving both to CPU.")
                 img = img.to(torch.device("cpu"))
                 output_img = output_img.to(torch.device("cpu"))
 
@@ -664,13 +669,48 @@ def concat_along_dim(arr_1: ImArr, arr_2: ImArr, dim: int):
     else:
         raise ValueError("Must be numpy array or torch tensor")
 
+def broadcast_arrays(im1_arr, im2_arr):
+    """
+    Takes [..., H, W, C] and [..., H, W, C] and broadcasts them to the same shape.
+    
+    TODO: Support broadcasting with different H/W/C. E.g., currently:
+    [1, H, W, C] and [H // 2, W, C] fail to broadcast
+    """
+    if isinstance(im1_arr, torch.Tensor):
+        expand_func = lambda x, shape: x.expand(shape)
+    elif isinstance(im1_arr, np.ndarray):
+        expand_func = np.broadcast_to
+    else:
+        raise ValueError("Unsupported array type.")
+    
+    im1_shape, im2_shape = im1_arr.shape, im2_arr.shape
+
+    if len(im1_shape) != len(im2_shape): # Check if the number of dimensions are different
+        warning_guard("Attempting to concat images with different numbers of leading dimensions. Broadcasting...")
+        if len(im1_shape) > len(im2_shape):
+            im2_arr = expand_func(im2_arr, im1_shape) # Broadcast im2 to match im1
+        else:
+            im1_arr = expand_func(im1_arr,im2_shape) # Broadcast im1 to match im2
+    else: # Same number of dimensions
+        if im1_shape != im2_shape and len(im1_shape) > 3:
+            if im1_shape[0] != im2_shape[0] and im1_shape[0] != 1 and im2_shape[0] != 1:
+                raise ValueError("Error: Cannot broadcast arrays with incompatible leading dimensions.")
+            warning_guard("Attempting to concat images with batch sizes. Broadcasting...")
+            if im1_shape[0] < im2_shape[0]:
+                im1_arr = expand_func(im1_arr,im2_shape) # Broadcast im1 to match im2
+            elif im1_shape[0] > im2_shape[0]:
+                im2_arr = expand_func(im2_arr,im1_shape) # Broadcast im2 to match im1
+    
+    return im1_arr, im2_arr
 
 def concat_horizontal_(im1: Im, im2: Im, spacing: int = 0, **kwargs) -> Im:
     # We convert to HWC but allow for tensor/ndarray with different shapes/dtypes
     im1_arr = get_arr_hwc(im1)
     im2_arr = get_arr_hwc(im2)
+    im1_arr, im2_arr = broadcast_arrays(im1_arr, im2_arr)
+
     if im1.height != im2.height:
-        warnings.warn(f"Images have different heights: {im1.height} and {im2.height}. Padding to match height.")
+        warning_guard(f"Images have different heights: {im1.height} and {im2.height}. Padding to match height.")
         if im1.height > im2.height:
             new_im2_arr = new_like(im1_arr, (*im1_arr.shape[:-2], im2_arr.shape[-2], *im2_arr.shape[-1:]), **kwargs)
             new_im2_arr[..., :im2.height, :, :] = im2_arr
@@ -692,8 +732,9 @@ def concat_vertical_(im1: Im, im2: Im, spacing: int = 0, **kwargs) -> Im:
     # We convert to HWC but allow for tensor/ndarray with different shapes/dtypes
     im1_arr = get_arr_hwc(im1)
     im2_arr = get_arr_hwc(im2)
+    im1_arr, im2_arr = broadcast_arrays(im1_arr, im2_arr)
     if im1.width != im2.width:
-        warnings.warn(f"Images have different widths: {im1.width} and {im2.width}. Padding to match width.")
+        warning_guard(f"Images have different widths: {im1.width} and {im2.width}. Padding to match width.")
         if im1.width > im2.width:
             new_im2_arr = new_like(im1_arr, (*im2_arr.shape[:-2], im1_arr.shape[-2], *im2_arr.shape[-1:]), **kwargs)
             new_im2_arr[..., :, : im2.width, :] = im2_arr
