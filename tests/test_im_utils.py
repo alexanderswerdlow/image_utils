@@ -235,6 +235,7 @@ def test_concat(img_params):
 def test_concat_broadcast(hw):
     good_cases = [
         (torch.randn(*hw, 3), torch.randn(*hw, 3)),
+        (torch.randn(*hw, 3), torch.randn(hw[0], hw[1] * 2, 3)),
         (torch.randn(1, *hw, 3), torch.randn(1, *hw, 3)),
         (torch.randn(*hw, 3), torch.randn(1, *hw, 3)),
         (torch.randn(1, *hw, 3), torch.randn(*hw, 3)),

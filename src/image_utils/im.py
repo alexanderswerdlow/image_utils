@@ -672,6 +672,9 @@ def concat_along_dim(arr_1: ImArr, arr_2: ImArr, dim: int):
 def broadcast_arrays(im1_arr, im2_arr):
     """
     Takes [..., H, W, C] and [..., H, W, C] and broadcasts them to the same shape.
+    
+    TODO: Support broadcasting with different H/W/C. E.g., currently:
+    [1, H, W, C] and [H // 2, W, C] fail to broadcast
     """
     if isinstance(im1_arr, torch.Tensor):
         expand_func = lambda x, shape: x.expand(shape)
@@ -689,7 +692,7 @@ def broadcast_arrays(im1_arr, im2_arr):
         else:
             im1_arr = expand_func(im1_arr,im2_shape) # Broadcast im1 to match im2
     else: # Same number of dimensions
-        if im1_shape != im2_shape:
+        if im1_shape != im2_shape and len(im1_shape) > 3:
             if im1_shape[0] != im2_shape[0] and im1_shape[0] != 1 and im2_shape[0] != 1:
                 raise ValueError("Error: Cannot broadcast arrays with incompatible leading dimensions.")
             warning_guard("Attempting to concat images with batch sizes. Broadcasting...")
