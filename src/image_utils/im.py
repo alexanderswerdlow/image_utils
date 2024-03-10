@@ -389,11 +389,11 @@ class Im:
         return filepath
     
     @_convert_to_datatype(desired_datatype=Tensor, desired_order=ChannelOrder.CHW, desired_range=ChannelRange.FLOAT)
-    def grid(self) -> Im:
-        img = utils.make_grid(self.arr) # type: ignore
+    def grid(self, **kwargs) -> Im:
+        img = utils.make_grid(self.arr, **kwargs) # type: ignore
         return Im(img)
 
-    def save(self, filepath: Optional[Path] = None, filetype="png", optimize=False, quality=None):
+    def save(self, filepath: Optional[Path] = None, filetype="png", optimize=False, quality=None, **kwargs):
         if filepath is None:
             filepath = Path(get_date_time_str())
         img = self.get_torch()
@@ -401,7 +401,7 @@ class Im:
         filepath = Im._save_data(filepath, filetype)
 
         if len(img.shape) > 3:
-            self = self.grid()
+            self = self.grid(**kwargs)
     
         img = self.get_pil()
 
@@ -599,6 +599,10 @@ class Im:
         output = pca(pca_arr, **kwargs)
         output: Tensor = rearrange(output, "(b h w) c -> b h w c", b=b, h=h, w=w)
         return Im(output)
+    
+    @_convert_to_datatype(desired_datatype=Tensor, desired_order=ChannelOrder.HWC, desired_range=ChannelRange.UINT8)
+    def bool_to_rgb(self) -> Im:
+        return self
 
     pil = property(get_pil)
     np = property(get_np)
