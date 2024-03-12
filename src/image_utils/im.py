@@ -42,7 +42,7 @@ ImDtype: TypeAlias = Union[torch.dtype, np.dtype]
 enable_warnings = os.getenv("IMAGE_UTILS_DISABLE_WARNINGS") is None
 
 def warning_guard(message: str):
-    if not enable_warnings:
+    if enable_warnings:
         warnings.warn(message, stacklevel=2)
 
 def is_dtype(arr: ImArr, dtype: Union[Float, Integer, Bool]):
