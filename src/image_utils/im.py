@@ -39,7 +39,7 @@ ImArr: TypeAlias = Union[ndarray, Tensor]  # The actual array itself
 ImArrType: TypeAlias = Type[Union[ndarray, Tensor]]  # The object itself is just a type
 ImDtype: TypeAlias = Union[torch.dtype, np.dtype]
 
-enable_warnings = os.getenv("IMAGE_UTILS_DISABLE_WARNINGS") is not None
+enable_warnings = os.getenv("IMAGE_UTILS_DISABLE_WARNINGS") is None
 
 def warning_guard(message: str):
     if not enable_warnings:
