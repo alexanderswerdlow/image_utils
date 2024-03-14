@@ -692,9 +692,15 @@ def broadcast_arrays(im1_arr, im2_arr):
     if len(im1_shape) != len(im2_shape): # Check if the number of dimensions are different
         warning_guard("Attempting to concat images with different numbers of leading dimensions. Broadcasting...")
         if len(im1_shape) > len(im2_shape):
-            im2_arr = expand_func(im2_arr, im1_shape) # Broadcast im2 to match im1
+            if len(im1_shape) == 4 and len(im2_shape) == 3 and im1_shape[-3:] != im2_shape[-3:]:
+                im2_arr = im2_arr[None]
+            else:
+                im2_arr = expand_func(im2_arr, im1_shape) # Broadcast im2 to match im1
         else:
-            im1_arr = expand_func(im1_arr,im2_shape) # Broadcast im1 to match im2
+            if len(im1_shape) == 3 and len(im2_shape) == 4 and im1_shape[-3:] != im2_shape[-3:]:
+                im1_arr = im1_arr[None]
+            else:
+                im1_arr = expand_func(im1_arr, im2_shape) # Broadcast im1 to match im2
     else: # Same number of dimensions
         if im1_shape != im2_shape and len(im1_shape) > 3:
             if im1_shape[0] != im2_shape[0] and im1_shape[0] != 1 and im2_shape[0] != 1:
