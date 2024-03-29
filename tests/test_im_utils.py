@@ -231,6 +231,43 @@ def test_concat(img_params):
     Im.concat_horizontal(*[img.np, img.np[..., : h_ // 2, : h_ // 2, :], img.np[..., :, h_ // 2 :, :]], spacing=5)
     Im.concat_horizontal(*[img.np, img.np[..., :, : h_ // 2, :]], spacing=5)
 
+@pytest.mark.parametrize("hw", [(16, 16), (64, 64)])
+def test_concat_broadcast(hw):
+    good_cases = [
+        (torch.randn(*hw, 3), torch.randn(*hw, 3)),
+        (torch.randn(*hw, 3), torch.randn(1, hw[0], hw[1] * 2, 3)),
+        (torch.randn(1, *hw, 3), torch.randn(hw[0], hw[1] * 2, 3)),
+        (torch.randn(*hw, 3), torch.randn(hw[0], hw[1] * 2, 3)),
+        (torch.randn(1, *hw, 3), torch.randn(1, *hw, 3)),
+        (torch.randn(*hw, 3), torch.randn(1, *hw, 3)),
+        (torch.randn(1, *hw, 3), torch.randn(*hw, 3)),
+        (torch.randn(5, *hw, 3), torch.randn(*hw, 3)),
+        (torch.randn(5, *hw, 3), torch.randn(1, *hw, 3)),
+        (torch.randn(5, 3, 2, *hw, 3), torch.randn(*hw, 3)),
+        (torch.randn(5, 3, 2, *hw, 3), torch.randn(2, *hw, 3)),
+        (torch.randn(5, 3, 2, *hw, 3), torch.randn(3, 2, *hw, 3)),
+        (torch.randn(2, *hw, 3), torch.randn(3, 2, *hw, 3)),
+    ]
+
+    for j in range(2):
+        for i, (im1, im2) in enumerate(good_cases):
+            if j == 1:
+                im1, im2 = im1.numpy(), im2.numpy()
+            Im.concat_horizontal(im1, im2)
+
+    error_cases = [
+        (torch.randn(4, *hw, 3), torch.randn(3, *hw, 3)),
+        (torch.randn(2, *hw, 3), torch.randn(4, *hw, 3)),
+    ]
+
+    for j in range(2):
+        for i, (im1, im2) in enumerate(error_cases, start=len(good_cases)+1):
+            try:
+                if j == 1:
+                    im1, im2 = im1.numpy(), im2.numpy()
+                Im.concat_horizontal(im1, im2)
+            except ValueError as e:
+                pass
 
 @pytest.mark.parametrize("img_params", valid_configs[:4])
 @pytest.mark.parametrize("format", ["mp4", "gif", "webm"])

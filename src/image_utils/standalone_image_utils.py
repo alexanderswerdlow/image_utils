@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import colorsys
 import io
-from typing import Optional
+from typing import Optional, Union
 
 import numpy as np
 import torch
@@ -11,40 +11,20 @@ from PIL import Image
 from torch import Tensor
 
 
-def get_layered_image_from_binary_mask(masks, flip=False):
-    from image_utils.im import torch_to_numpy
-    if torch.is_tensor(masks):
-        masks = torch_to_numpy(masks)
-    if flip:
-        masks = np.flipud(masks)
-
-    masks = masks.astype(np.bool_)
-
-    colors = np.asarray(list(get_n_distinct_colors(masks.shape[2])))
-    img = np.zeros((*masks.shape[:2], 3))
-    for i in range(masks.shape[2]):
-        img[masks[..., i]] = colors[i]
-
-    return Image.fromarray(img.astype(np.uint8))
+def torch_to_numpy(arr: Tensor):
+    if arr.dtype == torch.bfloat16:
+        return arr.float().cpu().detach().numpy()
+    else:
+        return arr.cpu().detach().numpy()
 
 
-def get_img_from_binary_masks(masks, flip=False):
-    """H W C"""
-    arr = encode_binary_labels(masks)
-    if flip:
-        arr = np.flipud(arr)
+def get_color(max_value: int, colormap="gist_rainbow"):
+    import matplotlib.pyplot as plt
+    import matplotlib.colors as mcolors
 
-    colors = np.asarray(list(get_n_distinct_colors(2 ** masks.shape[2])))
-    return Image.fromarray(colors[arr].astype(np.uint8))
-
-
-def encode_binary_labels(masks):
-    if torch.is_tensor(masks):
-        masks = torch_to_numpy(masks)
-
-    masks = masks.transpose(2, 0, 1)
-    bits = np.power(2, np.arange(len(masks), dtype=np.int32))
-    return (masks.astype(np.int32) * bits.reshape(-1, 1, 1)).sum(0)
+    colormap = plt.get_cmap(colormap)  # Pink is 0, Yellow is 1
+    colors = [mcolors.to_rgb(colormap(i / max_value)) for i in range(max_value)]  # Generate colors
+    return (np.array(colors) * 255).astype(int).tolist()
 
 
 def get_n_distinct_colors(n):
@@ -54,6 +34,84 @@ def get_n_distinct_colors(n):
 
     huePartition = 1.0 / (n + 1)
     return (HSVToRGB(huePartition * value, 1.0, 1.0) for value in range(0, n))
+
+
+def integer_to_color(seg: Union[torch.IntTensor, np.ndarray], num_classes: Optional[int] = None, **kwargs):
+    """
+    H, W np/torch int array to PIL Image.
+    """
+    if isinstance(seg, np.ndarray):
+        seg = torch.from_numpy(seg)
+
+    seg -= seg.min()
+    num_classes = num_classes or seg.max() + 1
+    onehot = torch.nn.functional.one_hot(seg, num_classes)
+    return onehot_to_color(onehot, **kwargs)
+
+
+def onehot_to_color(
+    masks: Union[torch.FloatTensor, np.ndarray],
+    flip: bool = False,
+    override_colors: Optional[dict[int, tuple[int, int, int]]] = None,
+    colormap: str = "gist_rainbow",
+    ignore_empty: bool = True,
+):
+    """
+    H, W, C np/torch bool array to PIL Image.
+    Note that in cases where a single pixel has multiple channels that are true, we take the color of the last channel.
+    """
+    if torch.is_tensor(masks):
+        masks = torch_to_numpy(masks)
+
+    if flip:
+        masks = np.flipud(masks)
+
+    assert masks.ndim == 3
+    masks = masks.astype(np.bool_)
+    colors = np.zeros((masks.shape[2], 3), dtype=np.uint8)
+
+    if ignore_empty:
+        nonzero_channels = np.apply_over_axes(np.sum, masks, [0, 1]).squeeze(0).squeeze(0) > 0
+        if nonzero_channels.sum() > 0:
+            colors[nonzero_channels] = list(get_color(nonzero_channels.sum(), colormap=colormap))
+    else:
+        colors = list(get_color(masks.shape[2], colormap=colormap))
+
+    img = np.zeros((*masks.shape[:2], 3))
+    for i in range(masks.shape[2]):
+        img[masks[..., i]] = colors[i]
+        if override_colors is not None and i in override_colors:
+            img[masks[..., i]] = override_colors[i]
+
+    return Image.fromarray(img.astype(np.uint8))
+
+
+def get_img_from_binary_masks(masks, flip=False):
+    """
+    Expects [H, W, C] np/torch array
+    """
+    arr = encode_binary_labels(masks)
+    if flip:
+        arr = np.flipud(arr)
+
+    colors = np.asarray(list(get_n_distinct_colors(2 ** masks.shape[2])))
+    return Image.fromarray(colors[arr].astype(np.uint8))
+
+
+def encode_binary_labels(masks):
+    """
+    Turns boolean mask -> integer segmentation. Considers each channel as a bit.
+    This is useful for visualizing masks that are overlapping.
+    Expects [H, W, C] np/torch boolean array
+    """
+    if torch.is_tensor(masks):
+        masks = torch_to_numpy(masks)
+
+    assert masks.ndim == 3
+    masks = masks.astype(np.bool_)
+    masks = masks.transpose(2, 0, 1)
+    bits = np.power(2, np.arange(len(masks), dtype=np.int32))
+    return (masks.astype(np.int32) * bits.reshape(-1, 1, 1)).sum(0)
 
 
 def square_pad(image, h, w):
@@ -125,6 +183,7 @@ def pca(embeddings: Tensor, num_components: int = 3, principal_components: Optio
 
     return embeddings
 
+
 def hist(arr, save: bool = True, use_im: bool = True, **kwargs):
     from lovely_numpy import lo as np_lo
 
@@ -134,7 +193,7 @@ def hist(arr, save: bool = True, use_im: bool = True, **kwargs):
     fig = np_lo(arr, **kwargs).plt.fig
 
     with io.BytesIO() as buff:
-        fig.savefig(buff, format='raw')
+        fig.savefig(buff, format="raw")
         buff.seek(0)
         data = np.frombuffer(buff.getvalue(), dtype=np.uint8)
     w, h = fig.canvas.get_width_height()
@@ -143,11 +202,12 @@ def hist(arr, save: bool = True, use_im: bool = True, **kwargs):
 
     if use_im:
         from image_utils import Im
-        img = Im(img)
+
+        img = Im(img[..., :3])
         if save:
             img.save()
     else:
         if save:
-            Image.fromarray(img).save('hist.png')
-        
+            Image.fromarray(img).save("hist.png")
+
     return img
