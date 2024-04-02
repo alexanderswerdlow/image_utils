@@ -359,21 +359,21 @@ class Im:
         arr = self.arr_transform(arr)
         return Im(arr)
 
-    def scale(self, scale) -> Im:
+    def scale(self, scale, **kwargs) -> Im:
         width, height = self.width, self.height
-        return self.resize(int(height * scale), int(width * scale))
+        return self.resize(int(height * scale), int(width * scale), **kwargs)
 
-    def scale_to_width(self, new_width) -> Im:
+    def scale_to_width(self, new_width, **kwargs) -> Im:
         width, height = self.width, self.height
         wpercent = new_width / float(width)
         hsize = int((float(height) * float(wpercent)))
-        return self.resize(hsize, new_width)
+        return self.resize(hsize, new_width, **kwargs)
 
-    def scale_to_height(self, new_height) -> Im:
+    def scale_to_height(self, new_height, **kwargs) -> Im:
         width, height = self.width, self.height
         hpercent = new_height / float(height)
         wsize = int((float(width) * float(hpercent)))
-        return self.resize(new_height, wsize)
+        return self.resize(new_height, wsize, **kwargs)
 
     @staticmethod
     def _save_data(filepath: Path = Path(get_date_time_str()), filetype="png"):
