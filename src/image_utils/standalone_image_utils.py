@@ -16,6 +16,28 @@ def torch_to_numpy(arr: Tensor):
         return arr.float().cpu().detach().numpy()
     else:
         return arr.cpu().detach().numpy()
+    
+def get_layered_image_from_binary_mask(masks, flip=False, override_colors=None, colormap='gist_rainbow'):
+    from image_utils.im import torch_to_numpy
+    if torch.is_tensor(masks):
+        masks = torch_to_numpy(masks)
+    if flip:
+        masks = np.flipud(masks)
+
+    masks = masks.astype(np.bool_)
+    
+    nonzero_channels = np.apply_over_axes(np.sum, masks, [0,1]).squeeze(0).squeeze(0) > 0
+    colors = np.zeros((masks.shape[2], 3), dtype=np.uint8)
+    if nonzero_channels.sum() > 0:
+        colors[nonzero_channels] = list(get_color(nonzero_channels.sum(), colormap=colormap))
+    
+    img = np.zeros((*masks.shape[:2], 3))
+    for i in range(masks.shape[2]):
+        img[masks[..., i]] = colors[i]
+        if override_colors is not None and i in override_colors:
+            img[masks[..., i]] = override_colors[i]
+
+    return Image.fromarray(img.astype(np.uint8))
 
 
 def get_color(max_value: int, colormap="gist_rainbow"):
