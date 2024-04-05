@@ -58,17 +58,19 @@ def get_n_distinct_colors(n):
     return (HSVToRGB(huePartition * value, 1.0, 1.0) for value in range(0, n))
 
 
-def integer_to_color(seg: Union[torch.IntTensor, np.ndarray], num_classes: Optional[int] = None, **kwargs):
+def integer_to_color(seg: Union[torch.IntTensor, np.ndarray], num_classes: Optional[int] = None, ignore_empty: bool = True, **kwargs):
     """
     H, W np/torch int array to PIL Image.
     """
     if isinstance(seg, np.ndarray):
         seg = torch.from_numpy(seg)
 
-    seg -= seg.min()
+    if ignore_empty:
+        seg -= seg.min()
+        
     num_classes = num_classes or seg.max() + 1
     onehot = torch.nn.functional.one_hot(seg, num_classes)
-    return onehot_to_color(onehot, **kwargs)
+    return onehot_to_color(onehot, ignore_empty=ignore_empty, **kwargs)
 
 
 def onehot_to_color(
