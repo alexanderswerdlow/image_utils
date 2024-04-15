@@ -571,9 +571,9 @@ class Im:
         """
         Move to tensor device. In-place operation.
         """
-        assert isinstance(self.arr, Tensor), "Can only convert to device if array is a Tensor"
-        self.arr = self.arr.to(device)
-        self.device = self.arr.device
+        if isinstance(self.arr, Tensor):
+            self.arr = self.arr.to(device)
+            self.device = self.arr.device
         return self
 
     @_convert_to_datatype(desired_datatype=Tensor, desired_order=ChannelOrder.CHW, desired_range=ChannelRange.FLOAT)
