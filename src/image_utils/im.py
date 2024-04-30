@@ -22,11 +22,10 @@ from PIL import Image
 from torch import Tensor
 
 if importlib.util.find_spec("image_utils") is not None:
-   from image_utils.file_utils import get_date_time_str, load_cached_from_url
-   from image_utils.standalone_image_utils import pca
+    from image_utils.file_utils import get_date_time_str, load_cached_from_url
+    from image_utils.standalone_image_utils import pca
 
 if importlib.util.find_spec("imageio") is not None:
-    import imageio
     from imageio import v3 as iio
 
 colorize_weights = {}
@@ -36,9 +35,11 @@ ImDtype: TypeAlias = Union[torch.dtype, np.dtype]
 
 enable_warnings = os.getenv("IMAGE_UTILS_DISABLE_WARNINGS") is None
 
+
 def warning_guard(message: str):
     if enable_warnings:
         warnings.warn(message, stacklevel=2)
+
 
 def is_dtype(arr: ImArr, dtype: Union[Float, Integer, Bool]):
     return isinstance(arr, dtype[ndarray, "..."]) or isinstance(arr, dtype[Tensor, "..."])
@@ -86,7 +87,7 @@ def identity(x):
 
 class Im:
     """
-    This class represents an image [or collection of batched images] and allows for simple conversion between formats 
+    This class represents an image [or collection of batched images] and allows for simple conversion between formats
     (PIL/NumPy ndarray/PyTorch Tensor) and support for common image operations, regardless of input dtype, batching, normalization, etc.
 
     Note: Be careful when using this class directly as part of a training pipeline. Many operations will cause the underlying data to convert between formats (e.g., Tensor -> Pillow) and move the data back to system memory and/or incur loss of precision (e.g., float -> uint8). In addition, we do not guarantee bit-consistency over different versions as we may the internal representation or backend computation of a function. Some operations are in place operations even if they return an Im object.
@@ -178,9 +179,9 @@ class Im:
             self.channel_range = ChannelRange.BOOL
         else:
             raise ValueError("Invalid Type")
-        
+
     def __getitem__(self, sl):
-        # TODO: Decide on a consistent way to handle slicing. We should either always slice according to the original shape, 
+        # TODO: Decide on a consistent way to handle slicing. We should either always slice according to the original shape,
         # or always slice according to [..., C, H, W].
         return Im(self.arr_transform(self.arr)[sl])
 
@@ -258,8 +259,8 @@ class Im:
                 im = im / 255.0
             elif self.channel_range == ChannelRange.BOOL:
                 assert self.channels == 1
-                if 'pattern' in self.arr_transform.keywords:
-                    self.arr_transform.keywords['pattern'] = '() ... -> ...'
+                if "pattern" in self.arr_transform.keywords:
+                    self.arr_transform.keywords["pattern"] = "() ... -> ..."
                 im = repeat(im, f"... {start_cur_order} -> ... {end_cur_order}", c=3)
                 if desired_range == ChannelRange.UINT8:
                     im = im * 255
@@ -276,7 +277,7 @@ class Im:
     def get_np(self, order=ChannelOrder.HWC, range=ChannelRange.UINT8) -> ndarray:
         arr = self.arr
         if is_tensor(arr):
-            arr = torch_to_numpy(arr) # type: ignore
+            arr = torch_to_numpy(arr)  # type: ignore
 
         arr = self._handle_order_transform(arr, order, range)
         return arr
@@ -296,7 +297,7 @@ class Im:
             img = self.get_np()
             if img.shape[-1] == 1:
                 img = rearrange(img, "... () -> ...")
-             
+
             img = rearrange(img, "... h w c -> (...) h w c").squeeze(0)
             return Image.fromarray(img)
         else:
@@ -320,7 +321,7 @@ class Im:
 
     @property
     def batch_size(self):
-        return self.arr.shape[0] # TODO: This is a bit hacky
+        return self.arr.shape[0]  # TODO: This is a bit hacky
 
     @property
     def channels(self):
@@ -360,6 +361,7 @@ class Im:
     def resize(self, height: int, width: int, resampling_mode: str = "bilinear"):
         assert isinstance(self.arr, Tensor)
         from torchvision.transforms.functional import resize
+
         arr = resize(self.arr, [height, width], resampling_mode, antialias=True)
         arr = self.arr_transform(arr)
         return Im(arr)
@@ -392,11 +394,12 @@ class Im:
             filepath.parent.mkdir(parents=True, exist_ok=True)
 
         return filepath
-    
+
     @_convert_to_datatype(desired_datatype=Tensor, desired_order=ChannelOrder.CHW, desired_range=ChannelRange.FLOAT)
     def grid(self, **kwargs) -> Im:
         from torchvision import utils
-        img = utils.make_grid(self.arr, **kwargs) # type: ignore
+
+        img = utils.make_grid(self.arr, **kwargs)  # type: ignore
         return Im(img)
 
     def save(self, filepath: Optional[Path] = None, filetype: str = "png", optimize: bool = False, quality: Optional[float] = None, **kwargs):
@@ -408,7 +411,7 @@ class Im:
         if self.batch_size > 1:
             img = self.get_torch()
             self = self.grid(**kwargs)
-    
+
         img = self.get_pil()
         assert isinstance(img, Image.Image)
 
@@ -421,17 +424,18 @@ class Im:
         self,
         text: Union[str, list[str]],
         color: tuple[int, int, int] = (255, 0, 0),
-        position: tuple[float, float] = (0.9725, 0.01), # yx position in relative coordinates [0, 1]. Defaults to bottom left.
+        position: tuple[float, float] = (0.9725, 0.01),  # yx position in relative coordinates [0, 1]. Defaults to bottom left.
         size: float = 1.0,
         thickness: float = 1.0,
-        font: int = 0, # cv2.FONT_HERSHEY_SIMPLEX
+        font: int = 0,  # cv2.FONT_HERSHEY_SIMPLEX
         relative_font_scale: Optional[float] = None,
     ) -> Im:
         import cv2
+
         FONT_SCALE = 3e-3 * size
         THICKNESS_SCALE = 2e-3 * thickness
         new_im = self.copy
-    
+
         if relative_font_scale is not None:
             warning_guard("relative_font_scale is deprecated. Use font_scale instead.")
             FONT_SCALE = relative_font_scale
@@ -441,7 +445,7 @@ class Im:
             assert isinstance(new_im.arr[i], ndarray)
             # We could convert to BGR and back but since we specify colors in RGB, we don't need to
             im = cv2.putText(
-                img=np.ascontiguousarray(new_im.arr[i]), # 
+                img=np.ascontiguousarray(new_im.arr[i]),  #
                 text=text_to_write,
                 org=(int(position[1] * new_im.width), int(position[0] * new_im.height)),
                 fontFace=font,
@@ -449,8 +453,8 @@ class Im:
                 color=color,
                 thickness=ceil(min(new_im.height, new_im.width) * THICKNESS_SCALE),
                 lineType=cv2.LINE_AA,
-            ) # type: ignore
-            new_im.arr[i] = im # type: ignore
+            )  # type: ignore
+            new_im.arr[i] = im  # type: ignore
 
         return new_im
 
@@ -466,6 +470,7 @@ class Im:
             imgs = [imgs]
 
         from PIL import ImageOps
+
         arr = np.stack([Im(ImageOps.expand(img, border=border, fill=color)).np for img in imgs], axis=0)
         arr = self.arr_transform(arr)
         return Im(arr)
@@ -526,6 +531,7 @@ class Im:
         """E.g.,cv2.COLOR_RGB2BGR"""
         assert isinstance(self.arr, ndarray)
         from cv2 import cvtColor
+
         self.arr = cvtColor(self.arr, color)
 
     @staticmethod
@@ -553,6 +559,7 @@ class Im:
 
         # TODO: We shouldn't need to write -> read. An imageio/ffmpeg issue is causing this.
         with tempfile.NamedTemporaryFile(suffix=f".{format}") as ntp:
+            import imageio
             if format == "webm":
                 writer = imageio.get_writer(
                     ntp.name, format="webm", codec="libvpx-vp9", pixelformat="yuv420p", output_params=["-lossless", "1"], fps=fps
@@ -593,6 +600,7 @@ class Im:
 
         assert isinstance(self.arr, Tensor)
         import torch.nn.functional as F
+
         arr = F.conv2d(self.arr, weight=colorize_weights[self.channels])
         arr = (arr - arr.min()) / (arr.max() - arr.min())
         arr = self.arr_transform(arr)
@@ -610,7 +618,7 @@ class Im:
         output = pca(pca_arr, **kwargs)
         output: Tensor = rearrange(output, "(b h w) c -> b h w c", b=b, h=h, w=w)
         return Im(output)
-    
+
     @_convert_to_datatype(desired_datatype=Tensor, desired_order=ChannelOrder.HWC, desired_range=ChannelRange.UINT8)
     def bool_to_rgb(self) -> Im:
         return self
@@ -623,7 +631,7 @@ class Im:
 
 def concat_variable(concat_func: Callable[..., Im], *args: Im, **kwargs) -> Im:
     if len(args) == 1 and isinstance(args[0], Iterable) and not isinstance(args[0], (Im, ndarray, Tensor)):
-        args = args[0] # We allow passing in a single list without prior unpacking
+        args = args[0]  # We allow passing in a single list without prior unpacking
 
     output_img = None
     for img in args:
@@ -650,15 +658,19 @@ def concat_variable(concat_func: Callable[..., Im], *args: Im, **kwargs) -> Im:
     assert isinstance(output_img, Im)
     return output_img
 
+
 def torch_to_numpy(arr: Tensor):
     if arr.dtype == torch.bfloat16:
         return arr.float().cpu().detach().numpy()
     else:
         return arr.cpu().detach().numpy()
-    
+
+
 def get_arr_hwc(im: Im):
-    if im.channels == 1: im = im.bool_to_rgb()
+    if im.channels == 1:
+        im = im.bool_to_rgb()
     return im._handle_order_transform(im.arr, desired_order=ChannelOrder.HWC, desired_range=im.channel_range)
+
 
 def new_like(arr, shape, fill: Optional[tuple[int]] = None):
     if is_ndarray(arr):
@@ -670,25 +682,27 @@ def new_like(arr, shape, fill: Optional[tuple[int]] = None):
 
     if fill is not None:
         assert len(fill) == 3 and new_arr.shape[-1] == 3
-        fill_ = fill if is_dtype(arr, Integer) else tuple(f / 255 for f in fill) # type: ignore
+        fill_ = fill if is_dtype(arr, Integer) else tuple(f / 255 for f in fill)  # type: ignore
         new_arr[..., 0] = fill_[0]
         new_arr[..., 1] = fill_[1]
         new_arr[..., 2] = fill_[2]
 
     return new_arr
 
+
 def concat_along_dim(arr_1: ImArr, arr_2: ImArr, dim: int):
     if is_ndarray(arr_1) and is_ndarray(arr_2):
         return np.concatenate((arr_1, arr_2), axis=dim)
     elif is_tensor(arr_1) and is_tensor(arr_2):
-        return torch.cat([arr_1, arr_2], dim=dim) # type: ignore
+        return torch.cat([arr_1, arr_2], dim=dim)  # type: ignore
     else:
         raise ValueError("Must be numpy array or torch tensor")
+
 
 def broadcast_arrays(im1_arr, im2_arr):
     """
     Takes [..., H, W, C] and [..., H, W, C] and broadcasts them to the same shape.
-    
+
     TODO: Support broadcasting with different H/W/C. E.g., currently:
     [1, H, W, C] and [H // 2, W, C] fail to broadcast
     """
@@ -698,32 +712,33 @@ def broadcast_arrays(im1_arr, im2_arr):
         expand_func = np.broadcast_to
     else:
         raise ValueError("Unsupported array type.")
-    
+
     im1_shape, im2_shape = im1_arr.shape, im2_arr.shape
 
-    if len(im1_shape) != len(im2_shape): # Check if the number of dimensions are different
+    if len(im1_shape) != len(im2_shape):  # Check if the number of dimensions are different
         warning_guard("Attempting to concat images with different numbers of leading dimensions. Broadcasting...")
         if len(im1_shape) > len(im2_shape):
             if len(im1_shape) == 4 and len(im2_shape) == 3 and im1_shape[-3:] != im2_shape[-3:]:
                 im2_arr = im2_arr[None]
             else:
-                im2_arr = expand_func(im2_arr, im1_shape) # Broadcast im2 to match im1
+                im2_arr = expand_func(im2_arr, im1_shape)  # Broadcast im2 to match im1
         else:
             if len(im1_shape) == 3 and len(im2_shape) == 4 and im1_shape[-3:] != im2_shape[-3:]:
                 im1_arr = im1_arr[None]
             else:
-                im1_arr = expand_func(im1_arr, im2_shape) # Broadcast im1 to match im2
-    else: # Same number of dimensions
+                im1_arr = expand_func(im1_arr, im2_shape)  # Broadcast im1 to match im2
+    else:  # Same number of dimensions
         if im1_shape != im2_shape and len(im1_shape) > 3:
             if im1_shape[0] != im2_shape[0] and im1_shape[0] != 1 and im2_shape[0] != 1:
                 raise ValueError("Error: Cannot broadcast arrays with incompatible leading dimensions.")
             warning_guard("Attempting to concat images with batch sizes. Broadcasting...")
             if im1_shape[0] < im2_shape[0]:
-                im1_arr = expand_func(im1_arr,im2_shape) # Broadcast im1 to match im2
+                im1_arr = expand_func(im1_arr, im2_shape)  # Broadcast im1 to match im2
             elif im1_shape[0] > im2_shape[0]:
-                im2_arr = expand_func(im2_arr,im1_shape) # Broadcast im2 to match im1
-    
+                im2_arr = expand_func(im2_arr, im1_shape)  # Broadcast im2 to match im1
+
     return im1_arr, im2_arr
+
 
 def concat_horizontal_(im1: Im, im2: Im, spacing: int = 0, **kwargs) -> Im:
     # We convert to HWC but allow for tensor/ndarray with different shapes/dtypes
@@ -735,11 +750,11 @@ def concat_horizontal_(im1: Im, im2: Im, spacing: int = 0, **kwargs) -> Im:
         warning_guard(f"Images have different heights: {im1.height} and {im2.height}. Padding to match height.")
         if im1.height > im2.height:
             new_im2_arr = new_like(im1_arr, (*im1_arr.shape[:-2], im2_arr.shape[-2], *im2_arr.shape[-1:]), **kwargs)
-            new_im2_arr[..., :im2.height, :, :] = im2_arr
+            new_im2_arr[..., : im2.height, :, :] = im2_arr
             im2_arr = new_im2_arr
         else:
             new_im1_arr = new_like(im2_arr, (*im2_arr.shape[:-2], im1_arr.shape[-2], *im1_arr.shape[-1:]), **kwargs)
-            new_im1_arr[..., :im1.height, :, :] = im1_arr
+            new_im1_arr[..., : im1.height, :, :] = im1_arr
             im1_arr = new_im1_arr
 
     if spacing > 0:
@@ -772,4 +787,3 @@ def concat_vertical_(im1: Im, im2: Im, spacing: int = 0, **kwargs) -> Im:
         im2_arr = new_im2_arr
 
     return Im(concat_along_dim(im1_arr, im2_arr, dim=-3))
-
