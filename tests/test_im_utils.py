@@ -328,3 +328,28 @@ def test_crop(img_params):
     img = Im(get_img(**img_params))
     img = img.crop(0, 128, 0, 128)
     img.save(get_file_path(img_params, "complicated"))
+
+
+@pytest.mark.parametrize("hw", [(16, 16), (64, 64)])
+def test_single_channel(hw):
+    Im(torch.randn(hw)).save(get_file_path({"img_type": np.ndarray}, "single_channel"))
+    Im(torch.rand(hw)).save(get_file_path({"img_type": np.ndarray}, "single_channel"))
+    Im(torch.randn(hw) * 1000).save(get_file_path({"img_type": np.ndarray}, "single_channel"))
+
+@pytest.mark.parametrize("hw", [(16, 16), (64, 64)])
+def test_complicated_concat(hw):
+    Im.concat_horizontal(
+        torch.randn(hw),
+        torch.randn(1, *hw),
+        torch.randn(1, *hw, 3),
+        torch.randn(hw) > 0.5,
+        torch.randn(1, *hw) > 0.5,
+        np.random.randn(*hw),
+        np.random.randn(1, *hw),
+        np.random.rand(1, *hw, 3),
+        np.random.randint(256, size=(*hw, 3)).astype(np.uint8),
+        np.random.randint(256, size=(1, *hw, 3)).astype(np.uint8),
+        np.random.rand(*hw) > 0.5,
+        np.random.rand(1, *hw) > 0.5,
+        np.random.rand(1, *hw, 1) > 0.5,
+    ).save(get_file_path({"img_type": np.ndarray}, "complicated_concat"))

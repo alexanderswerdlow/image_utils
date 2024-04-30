@@ -141,10 +141,6 @@ class Im:
         else:
             raise ValueError("Must be numpy array, pillow image, or torch tensor")
 
-        # Normalize single-channel image to HWC
-        if len(self.arr.shape) == 2:
-            self.arr = self.arr[..., None]
-
         # TODO: Consider normalizing to HWC order for all arrays, similar to how arr_transform works
         # These views should be very efficient and make things more unified
         self.channel_order: ChannelOrder = ChannelOrder.HWC if self.arr.shape[-1] < min(self.arr.shape[-3:-1]) else ChannelOrder.CHW
@@ -152,8 +148,11 @@ class Im:
 
         # We normalize all arrays to (B, H, W, C) and record their original shape so
         # we can re-transform then when we need to output them
-        if len(self.arr.shape) == 3:
-            self.arr_transform = partial(rearrange, pattern="() a b c -> a b c")
+        if len(self.arr.shape) == 2:
+            self.channel_order = ChannelOrder.HWC
+            self.arr_transform = partial(rearrange, pattern="() h w () -> h w")
+        elif len(self.arr.shape) == 3:
+            self.arr_transform = partial(rearrange, pattern="() h w c -> h w c")
         elif len(self.arr.shape) == 4:
             self.arr_transform = partial(identity)
         elif len(self.arr.shape) >= 5:
@@ -164,7 +163,10 @@ class Im:
         else:
             raise ValueError("Must be between 3-5 dims")
 
-        self.arr = rearrange(self.arr, "... a b c -> (...) a b c")
+        if len(self.arr.shape) == 2:
+            self.arr = rearrange(self.arr, "h w -> h w ()")
+
+        self.arr = rearrange(self.arr, "... h w c -> (...) h w c")
 
         # We use some very simple hueristics to guess what kind of image we have
         if channel_range is not None:  # Optionally specify the type
@@ -176,10 +178,7 @@ class Im:
             else:  # We assume an integer array with 0s and 1s is a BW image
                 self.channel_range = ChannelRange.BOOL
         elif is_dtype(arr, Float):
-            if -128 <= self.arr.min() <= self.arr.max() <= 128:
-                self.channel_range = ChannelRange.FLOAT
-            else:
-                raise ValueError("Not supported")
+            self.channel_range = ChannelRange.FLOAT
         elif is_dtype(arr, Bool):
             self.channel_range = ChannelRange.BOOL
         else:
@@ -240,6 +239,10 @@ class Im:
         else:
             im = self.arr_transform(im)
 
+        if self.channels == 1 and len(im.shape) == 2:
+            im = rearrange(im, "h w -> h w ()")
+            assert self.channel_order == ChannelOrder.HWC
+
         if desired_order == ChannelOrder.CHW and self.channel_order == ChannelOrder.HWC:
             im = rearrange(im, "... h w c -> ... c h w")
         elif desired_order == ChannelOrder.HWC and self.channel_order == ChannelOrder.CHW:
@@ -251,15 +254,20 @@ class Im:
         if self.channel_range != desired_range:
             assert is_ndarray(im) or is_tensor(im)
             if self.channel_range == ChannelRange.FLOAT and desired_range == ChannelRange.UINT8:
+                if self.channels == 1:
+                    im = (im - im.min()) / (im.max() - im.min())
                 im = im * 255
+                if self.channels == 1:
+                    im = repeat(im, f"... {start_cur_order} -> ... {end_cur_order}", c=3)
             elif self.channel_range == ChannelRange.UINT8 and desired_range == ChannelRange.FLOAT:
                 im = im / 255.0
-            elif self.channel_range == ChannelRange.BOOL and desired_range == ChannelRange.UINT8:
+            elif self.channel_range == ChannelRange.BOOL:
                 assert self.channels == 1
-                im = repeat(im, f"... {start_cur_order} -> ... {end_cur_order}", c=3) * 255
-            elif self.channel_range == ChannelRange.BOOL and desired_range == ChannelRange.FLOAT:
-                assert self.channels == 1
+                if 'pattern' in self.arr_transform.keywords:
+                    self.arr_transform.keywords['pattern'] = '() ... -> ...'
                 im = repeat(im, f"... {start_cur_order} -> ... {end_cur_order}", c=3)
+                if desired_range == ChannelRange.UINT8:
+                    im = im * 255
             else:
                 raise ValueError("Not supported")
 
@@ -276,7 +284,6 @@ class Im:
             arr = torch_to_numpy(arr) # type: ignore
 
         arr = self._handle_order_transform(arr, order, range)
-
         return arr
 
     def get_torch(self, order=ChannelOrder.CHW, range=ChannelRange.FLOAT) -> Tensor:
@@ -290,15 +297,17 @@ class Im:
         return arr
 
     def get_pil(self) -> Union[Image.Image, list[Image.Image]]:
-        if len(self.arr_transform(self.arr)) == 3:
-            _img = self.get_np()
-            if _img.shape[-1] == 1:
-                _img = rearrange(_img, "... () -> ...")
-            return Image.fromarray(_img)
+        if self.batch_size == 1:
+            img = self.get_np()
+            if img.shape[-1] == 1:
+                img = rearrange(img, "... () -> ...")
+             
+            img = rearrange(img, "... h w c -> (...) h w c").squeeze(0)
+            return Image.fromarray(img)
         else:
             img = rearrange(self.get_np(), "... h w c -> (...) h w c")
             if img.shape[0] == 1:
-                return Image.fromarray(img[0])
+                return Image.fromarray(img[0].squeeze(-1) if (self.channels == 1 and img[0].shape[-1] == 1) else img[0])
             else:
                 return [Image.fromarray(img[i]) for i in range(img.shape[0])]
 
@@ -396,15 +405,14 @@ class Im:
     def save(self, filepath: Optional[Path] = None, filetype="png", optimize=False, quality=None, **kwargs):
         if filepath is None:
             filepath = Path(get_date_time_str())
-        img = self.get_torch()
 
         filepath = Im._save_data(filepath, filetype)
 
-        if len(img.shape) > 3:
+        if self.batch_size > 1:
+            img = self.get_torch()
             self = self.grid(**kwargs)
     
         img = self.get_pil()
-
         assert isinstance(img, Image.Image)
 
         flags = {"optimize": True, "quality": quality if quality else 0.95} if optimize or quality else {}
@@ -425,7 +433,6 @@ class Im:
         
         FONT_SCALE = 3e-3 * size
         THICKNESS_SCALE = 2e-3 * thickness
-
         new_im = self.copy
     
         if relative_font_scale is not None:
@@ -573,7 +580,10 @@ class Im:
         """
         if isinstance(self.arr, Tensor):
             self.arr = self.arr.to(device)
-            self.device = self.arr.device
+        else:
+            assert device == torch.device("cpu")
+
+        self.device = device
         return self
 
     @_convert_to_datatype(desired_datatype=Tensor, desired_order=ChannelOrder.CHW, desired_range=ChannelRange.FLOAT)
@@ -646,6 +656,7 @@ def torch_to_numpy(arr: Tensor):
         return arr.cpu().detach().numpy()
     
 def get_arr_hwc(im: Im):
+    if im.channels == 1: im = im.bool_to_rgb()
     return im._handle_order_transform(im.arr, desired_order=ChannelOrder.HWC, desired_range=im.channel_range)
 
 def new_like(arr, shape, fill: Optional[tuple[int]] = None):
