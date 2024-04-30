@@ -22,7 +22,6 @@ dependencies = [
     "numpy>=1.22",
     "pillow>=9.0.0",
     "einops>=0.6.0",
-    "StrEnum>=0.4.9",
     "jaxtyping>=0.2.25"
 ]
 

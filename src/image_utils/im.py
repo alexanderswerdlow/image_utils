@@ -6,25 +6,20 @@ import os
 import string
 import tempfile
 import warnings
-from enum import auto
+from enum import Enum
 from functools import partial
 from io import BytesIO
 from math import ceil
 from pathlib import Path
 from typing import Callable, Iterable, Optional, Tuple, Type, TypeAlias, Union
 
-import cv2
 import numpy as np
 import torch
-import torch.nn.functional as F
 from einops import rearrange, repeat
 from jaxtyping import Bool, Float, Integer
 from numpy import ndarray
-from PIL import Image, ImageOps
-from strenum import StrEnum
+from PIL import Image
 from torch import Tensor
-from torchvision import utils
-from torchvision.transforms.functional import InterpolationMode, resize
 
 if importlib.util.find_spec("image_utils") is not None:
    from image_utils.file_utils import get_date_time_str, load_cached_from_url
@@ -74,15 +69,15 @@ def dispatch_op(obj: ImArr, np_op, torch_op, *args):
         raise ValueError(f"obj must be numpy array or torch tensor, not {type(obj)}")
 
 
-class ChannelOrder(StrEnum):
-    HWC = auto()
-    CHW = auto()
+class ChannelOrder(Enum):
+    HWC = "HWC"
+    CHW = "CHW"
 
 
-class ChannelRange(StrEnum):
-    UINT8 = auto()
-    FLOAT = auto()
-    BOOL = auto()
+class ChannelRange(Enum):
+    UINT8 = "UINT8"
+    FLOAT = "FLOAT"
+    BOOL = "BOOL"
 
 
 def identity(x):
@@ -362,30 +357,31 @@ class Im:
         return Im(Image.new("RGB", (w, h), color))
 
     @_convert_to_datatype(desired_datatype=Tensor, desired_order=ChannelOrder.CHW, desired_range=ChannelRange.FLOAT)
-    def resize(self, height, width, resampling_mode=InterpolationMode.BILINEAR):
+    def resize(self, height: int, width: int, resampling_mode: str = "bilinear"):
         assert isinstance(self.arr, Tensor)
+        from torchvision.transforms.functional import resize
         arr = resize(self.arr, [height, width], resampling_mode, antialias=True)
         arr = self.arr_transform(arr)
         return Im(arr)
 
-    def scale(self, scale, **kwargs) -> Im:
+    def scale(self, scale: float, **kwargs) -> Im:
         width, height = self.width, self.height
         return self.resize(int(height * scale), int(width * scale), **kwargs)
 
-    def scale_to_width(self, new_width, **kwargs) -> Im:
+    def scale_to_width(self, new_width: int, **kwargs) -> Im:
         width, height = self.width, self.height
         wpercent = new_width / float(width)
         hsize = int((float(height) * float(wpercent)))
         return self.resize(hsize, new_width, **kwargs)
 
-    def scale_to_height(self, new_height, **kwargs) -> Im:
+    def scale_to_height(self, new_height: int, **kwargs) -> Im:
         width, height = self.width, self.height
         hpercent = new_height / float(height)
         wsize = int((float(width) * float(hpercent)))
         return self.resize(new_height, wsize, **kwargs)
 
     @staticmethod
-    def _save_data(filepath: Path = Path(get_date_time_str()), filetype="png"):
+    def _save_data(filepath: Path = Path(get_date_time_str()), filetype: str = "png"):
         filepath = Path(filepath)
         if filepath.suffix == "":
             filepath = filepath.with_suffix(f".{filetype}")
@@ -399,10 +395,11 @@ class Im:
     
     @_convert_to_datatype(desired_datatype=Tensor, desired_order=ChannelOrder.CHW, desired_range=ChannelRange.FLOAT)
     def grid(self, **kwargs) -> Im:
+        from torchvision import utils
         img = utils.make_grid(self.arr, **kwargs) # type: ignore
         return Im(img)
 
-    def save(self, filepath: Optional[Path] = None, filetype="png", optimize=False, quality=None, **kwargs):
+    def save(self, filepath: Optional[Path] = None, filetype: str = "png", optimize: bool = False, quality: Optional[float] = None, **kwargs):
         if filepath is None:
             filepath = Path(get_date_time_str())
 
@@ -427,10 +424,10 @@ class Im:
         position: tuple[float, float] = (0.9725, 0.01), # yx position in relative coordinates [0, 1]. Defaults to bottom left.
         size: float = 1.0,
         thickness: float = 1.0,
-        font: int = cv2.FONT_HERSHEY_SIMPLEX,
+        font: int = 0, # cv2.FONT_HERSHEY_SIMPLEX
         relative_font_scale: Optional[float] = None,
     ) -> Im:
-        
+        import cv2
         FONT_SCALE = 3e-3 * size
         THICKNESS_SCALE = 2e-3 * thickness
         new_im = self.copy
@@ -467,6 +464,8 @@ class Im:
         imgs = self.pil
         if not isinstance(imgs, Iterable):
             imgs = [imgs]
+
+        from PIL import ImageOps
         arr = np.stack([Im(ImageOps.expand(img, border=border, fill=color)).np for img in imgs], axis=0)
         arr = self.arr_transform(arr)
         return Im(arr)
@@ -526,7 +525,8 @@ class Im:
     def convert_opencv_color(self, color: int):
         """E.g.,cv2.COLOR_RGB2BGR"""
         assert isinstance(self.arr, ndarray)
-        self.arr = cv2.cvtColor(self.arr, color)
+        from cv2 import cvtColor
+        self.arr = cvtColor(self.arr, color)
 
     @staticmethod
     def concat_vertical(*args, **kwargs) -> Im:
@@ -592,6 +592,7 @@ class Im:
             colorize_weights[self.channels] = torch.randn(3, self.channels, 1, 1)
 
         assert isinstance(self.arr, Tensor)
+        import torch.nn.functional as F
         arr = F.conv2d(self.arr, weight=colorize_weights[self.channels])
         arr = (arr - arr.min()) / (arr.max() - arr.min())
         arr = self.arr_transform(arr)
