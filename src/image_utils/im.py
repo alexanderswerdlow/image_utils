@@ -11,7 +11,7 @@ from functools import partial
 from io import BytesIO
 from math import ceil
 from pathlib import Path
-from typing import Callable, Iterable, Optional, Tuple, Type, TypeAlias, Union
+from typing import Callable, Iterable, Optional, Tuple, Type, Union
 
 import numpy as np
 import torch
@@ -29,13 +29,16 @@ if importlib.util.find_spec("imageio") is not None:
     from imageio import v3 as iio
 
 colorize_weights = {}
-ImArr: TypeAlias = Union[ndarray, Tensor]  # The actual array itself
-ImArrType: TypeAlias = Type[Union[ndarray, Tensor]]  # The object itself is just a type
-ImDtype: TypeAlias = Union[torch.dtype, np.dtype]
+ImArr = Union[ndarray, Tensor]  # The actual array itself
+ImArrType = Type[Union[ndarray, Tensor]]  # The object itself is just a type
+ImDtype = Union[torch.dtype, np.dtype]
 
 enable_warnings = os.getenv("IMAGE_UTILS_DISABLE_WARNINGS") is None
 
-
+class callable_staticmethod(staticmethod):
+    def __call__(self, *args, **kwargs):
+        return self.__func__(*args, **kwargs)
+    
 def warning_guard(message: str):
     if enable_warnings:
         warnings.warn(message, stacklevel=2)
@@ -218,7 +221,7 @@ class Im:
 
         return self
 
-    @staticmethod
+    @callable_staticmethod
     def _convert_to_datatype(desired_datatype: ImArrType, desired_order=ChannelOrder.HWC, desired_range=ChannelRange.UINT8):
         def custom_decorator(func):
             def wrapper(self: Im, *args, **kwargs):
@@ -345,7 +348,7 @@ class Im:
         else:
             return (self.arr.shape[-2], self.arr.shape[-1])
 
-    @staticmethod
+    @callable_staticmethod
     def open(filepath: Path, use_imageio=False) -> Im:
         if use_imageio:
             img = iio.imread(filepath)
@@ -353,16 +356,15 @@ class Im:
             img = Image.open(filepath)
         return Im(img)
 
-    @staticmethod
+    @callable_staticmethod
     def new(h: int, w: int, color=(255, 255, 255)):
         return Im(Image.new("RGB", (w, h), color))
 
     @_convert_to_datatype(desired_datatype=Tensor, desired_order=ChannelOrder.CHW, desired_range=ChannelRange.FLOAT)
     def resize(self, height: int, width: int, resampling_mode: str = "bilinear"):
         assert isinstance(self.arr, Tensor)
-        from torchvision.transforms.functional import resize
-
-        arr = resize(self.arr, [height, width], resampling_mode, antialias=True)
+        from torchvision.transforms.functional import resize, InterpolationMode
+        arr = resize(self.arr, [height, width], InterpolationMode(resampling_mode), antialias=True)
         arr = self.arr_transform(arr)
         return Im(arr)
 
@@ -382,7 +384,7 @@ class Im:
         wsize = int((float(width) * float(hpercent)))
         return self.resize(new_height, wsize, **kwargs)
 
-    @staticmethod
+    @callable_staticmethod
     def _save_data(filepath: Path = Path(get_date_time_str()), filetype: str = "png"):
         filepath = Path(filepath)
         if filepath.suffix == "":
@@ -534,12 +536,12 @@ class Im:
 
         self.arr = cvtColor(self.arr, color)
 
-    @staticmethod
+    @callable_staticmethod
     def concat_vertical(*args, **kwargs) -> Im:
         """Concatenates images vertically (i.e. stacked on top of each other)"""
         return concat_variable(concat_vertical_, *args, **kwargs)
 
-    @staticmethod
+    @callable_staticmethod
     def concat_horizontal(*args, **kwargs) -> Im:
         """Concatenates images horizontally (i.e. left to right)"""
         return concat_variable(concat_horizontal_, *args, **kwargs)
