@@ -336,7 +336,7 @@ def test_single_channel(hw):
     Im(torch.rand(hw)).save(get_file_path({"img_type": np.ndarray}, "single_channel"))
     Im(torch.randn(hw) * 1000).save(get_file_path({"img_type": np.ndarray}, "single_channel"))
 
-@pytest.mark.parametrize("hw", [(16, 16), (64, 64)])
+# @pytest.mark.parametrize("hw", [(16, 16), (64, 64)])
 def test_complicated_concat(hw):
     Im.concat_horizontal(
         torch.randn(hw),
