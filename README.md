@@ -1,5 +1,10 @@
 # Image Utils
 
+[![Run tests](https://github.com/alexanderswerdlow/image_utils/actions/workflows/ci.yml/badge.svg)](https://github.com/alexanderswerdlow/image_utils/actions/workflows/ci.yml)
+[![Documentation](https://img.shields.io/badge/documentation-link-blue.svg)](https://image-utils.readthedocs.io/)
+![Supported python versions](https://raw.githubusercontent.com/alexanderswerdlow/image_utils/master/docs/python_badge.svg)
+
+
 Are you tired of having to constantly switch between NumPy arrays, PyTorch Tensors, and PIL images? Simply wrap your NumPy array, PyTorch Tensor, or PIL image with `Im()` and let it handle conversions between formats.
 
 For example, we can replace this:
