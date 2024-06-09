@@ -5,10 +5,17 @@ import io
 from typing import Optional, Union
 
 import numpy as np
-import torch
-import torchvision.transforms.functional as T
 from PIL import Image
-from torch import Tensor
+
+import importlib
+
+if importlib.util.find_spec("torch") is not None:
+    import torch
+    from torch import Tensor
+
+if importlib.util.find_spec("torchvision") is not None:
+    import torchvision.transforms.functional as T
+
 
 
 def torch_to_numpy(arr: Tensor):

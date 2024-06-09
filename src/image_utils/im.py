@@ -11,15 +11,20 @@ from functools import partial
 from io import BytesIO
 from math import ceil
 from pathlib import Path
-from typing import Callable, Iterable, Optional, Tuple, Type, Union
+from typing import TYPE_CHECKING, Callable, Iterable, Optional, Tuple, Type, Union
 
 import numpy as np
-import torch
 from einops import rearrange, repeat
 from jaxtyping import Bool, Float, Integer
 from numpy import ndarray
 from PIL import Image
-from torch import Tensor
+
+if importlib.util.find_spec("torch") is not None:
+    import torch
+    from torch import Tensor
+else:
+    class Tensor:
+        pass
 
 if importlib.util.find_spec("image_utils") is not None:
     from image_utils.file_utils import get_date_time_str, load_cached_from_url
@@ -28,11 +33,12 @@ if importlib.util.find_spec("image_utils") is not None:
 if importlib.util.find_spec("imageio") is not None:
     from imageio import v3 as iio
 
-colorize_weights = {}
-ImArr = Union[ndarray, Tensor]  # The actual array itself
-ImArrType = Type[Union[ndarray, Tensor]]  # The object itself is just a type
-ImDtype = Union[torch.dtype, np.dtype]
+if TYPE_CHECKING:
+    ImArr = Union[ndarray, Tensor]  # The actual array itself
+    ImArrType = Type[Union[ndarray, Tensor]]  # The object itself is just a type
+    ImDtype = Union[torch.dtype, np.dtype]
 
+colorize_weights = {}
 enable_warnings = os.getenv("IMAGE_UTILS_DISABLE_WARNINGS") is None
 
 class callable_staticmethod(staticmethod):
@@ -130,7 +136,7 @@ class Im:
         self.arr: ImArr = arr
         if isinstance(self.arr, ndarray):
             self.arr_type = ndarray
-            self.device = torch.device("cpu")
+            self.device = "cpu"
         elif isinstance(self.arr, Tensor):
             self.device = self.arr.device
             self.arr_type = Tensor
@@ -253,7 +259,7 @@ class Im:
         if self.channel_range != desired_range:
             assert is_ndarray(im) or is_tensor(im)
             if self.channel_range == ChannelRange.FLOAT and desired_range == ChannelRange.UINT8:
-                if self.channels == 1:
+                if self.channels == 1 and im.max() > im.min():
                     im = (im - im.min()) / (im.max() - im.min())
                 im = im * 255
                 if self.channels == 1:
@@ -385,7 +391,7 @@ class Im:
         return self.resize(new_height, wsize, **kwargs)
 
     @callable_staticmethod
-    def _save_data(filepath: Path = Path(get_date_time_str()), filetype: str = "png"):
+    def _save_data(filepath: Path = Path(get_date_time_str()), filetype: str = "png") -> Path:
         filepath = Path(filepath)
         if filepath.suffix == "":
             filepath = filepath.with_suffix(f".{filetype}")
@@ -404,7 +410,14 @@ class Im:
         img = utils.make_grid(self.arr, **kwargs)  # type: ignore
         return Im(img)
 
-    def save(self, filepath: Optional[Path] = None, filetype: str = "png", optimize: bool = False, quality: Optional[float] = None, **kwargs):
+    def save(
+        self,
+        filepath: Optional[Path] = None,
+        filetype: str = "png",
+        optimize: bool = False,
+        quality: Optional[float] = None, 
+        **kwargs
+    ) -> Path:
         if filepath is None:
             filepath = Path(get_date_time_str())
 
@@ -420,6 +433,8 @@ class Im:
         flags = {"optimize": True, "quality": quality if quality else 0.95} if optimize or quality else {}
 
         img.save(filepath, **flags)
+
+        return filepath.resolve()
 
     @_convert_to_datatype(desired_datatype=ndarray, desired_order=ChannelOrder.HWC, desired_range=ChannelRange.UINT8)
     def write_text(
@@ -546,13 +561,21 @@ class Im:
         """Concatenates images horizontally (i.e. left to right)"""
         return concat_variable(concat_horizontal_, *args, **kwargs)
 
-    def save_video(self, filepath: Optional[Path] = None, fps: int = 4, format="mp4"):
+    def save_video(self, filepath: Optional[Path] = None, fps: int = 4, format="mp4", use_pyav: bool = False):
         if filepath is None:
             filepath = Path(get_date_time_str())
-        filepath = Im._save_data(filepath, format)
-        byte_stream = self.encode_video(fps, format)
-        with open(filepath, "wb") as f:
-            f.write(byte_stream.getvalue())
+
+        filepath: Path = Im._save_data(filepath, format)
+
+        if use_pyav:
+            from image_utils.video_utils import write_video
+            self = self._convert(desired_datatype=ndarray, desired_order=ChannelOrder.HWC, desired_range=ChannelRange.UINT8)
+            assert isinstance(self.arr, ndarray)
+            write_video(self.arr, filepath, fps=fps)
+        else:
+            byte_stream = self.encode_video(fps, format)
+            with open(filepath, "wb") as f:
+                f.write(byte_stream.getvalue())
 
     @_convert_to_datatype(desired_datatype=ndarray, desired_order=ChannelOrder.HWC, desired_range=ChannelRange.UINT8)
     def encode_video(self, fps: int, format="mp4") -> BytesIO:
@@ -620,6 +643,29 @@ class Im:
         output = pca(pca_arr, **kwargs)
         output: Tensor = rearrange(output, "(b h w) c -> b h w c", b=b, h=h, w=w)
         return Im(output)
+
+    def show(self):
+        import subprocess
+
+        method = None
+        if subprocess.run(['which', 'imgcat'], capture_output=True).returncode == 0:
+            method = 'iterm2-imgcat'
+        elif subprocess.run(['which', 'xdg-open'], capture_output=True).returncode == 0:
+            method = 'xdg-open'
+
+        if method is not None:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                filename = self.save(Path(temp_dir))
+                if method == 'iterm2-imgcat':
+                    print('\n' * 4)
+                    print('\033[4F')
+                    subprocess.check_call(['imgcat', filename])
+                    print('\033[4B')
+                else:
+                    subprocess.check_call(['xdg-open', filename])
+        else:
+            filename = self.save()
+            print(f'Failed to view image.Image saved to {filename}')
 
     @_convert_to_datatype(desired_datatype=Tensor, desired_order=ChannelOrder.HWC, desired_range=ChannelRange.UINT8)
     def bool_to_rgb(self) -> Im:

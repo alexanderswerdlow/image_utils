@@ -12,11 +12,11 @@ def delete_create_folder(path: Path):
     path.mkdir(parents=True, exist_ok=True)
 
 
-def get_rand_hex():
+def get_rand_hex() -> str:
     return "".join(random.choices(string.ascii_uppercase + string.digits, k=5))
 
 
-def get_date_time_str():
+def get_date_time_str() -> str:
     return datetime.now().strftime("%Y_%m_%d-%H_%M")
 
 
