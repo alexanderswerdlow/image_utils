@@ -18,6 +18,7 @@ from einops import rearrange, repeat
 from jaxtyping import Bool, Float, Integer
 from numpy import ndarray
 from PIL import Image
+from torch import rand
 
 if importlib.util.find_spec("torch") is not None:
     import torch
@@ -111,10 +112,10 @@ class Im:
     default_normalize_mean = [0.4265, 0.4489, 0.4769]
     default_normalize_std = [0.2053, 0.2206, 0.2578]
 
-    def __init__(self, arr: Union["Im", Tensor, Image.Image, ndarray], channel_range: Optional[ChannelRange] = None, **kwargs):
+    def __init__(self, arr: Union["Im", Tensor, Image.Image, ndarray, str, Path], channel_range: Optional[ChannelRange] = None, **kwargs):
         # TODO: Add real URL checking here
         if isinstance(arr, (str, Path)) and Path(arr).exists():
-            arr = Im.open(arr)  # type: ignore
+            arr = Im.open(arr)
         elif isinstance(arr, str):
             arr = Image.open(load_cached_from_url(arr))
 
@@ -365,6 +366,13 @@ class Im:
     @callable_staticmethod
     def new(h: int, w: int, color=(255, 255, 255)):
         return Im(Image.new("RGB", (w, h), color))
+    
+    @callable_staticmethod
+    def random(h: int = 1080, w: int = 1920) -> Im:
+        try:
+            return Im(Image.open(load_cached_from_url(f"https://unsplash.it/{w}/{h}?random", cache=False)))
+        except:
+            return Im(Image.open(load_cached_from_url(f"https://picsum.photos/{w}/{h}?random", cache=False)))
 
     @_convert_to_datatype(desired_datatype=Tensor, desired_order=ChannelOrder.CHW, desired_range=ChannelRange.FLOAT)
     def resize(self, height: int, width: int, resampling_mode: str = "bilinear"):
