@@ -4,8 +4,11 @@ def enable():
         if importlib.util.find_spec("numpy") is not None:
             import numpy as np
             np.set_printoptions(suppress=True, precision=3, threshold=10, edgeitems=2, linewidth=120)
-            from lovely_numpy import lovely, set_config
-            set_config(repr=lovely)
+            try:
+                from lovely_numpy import lovely, set_config
+                set_config(repr=lovely)
+            except:
+                print(f"Failed to enable lovely_numpy.")
         
         if importlib.util.find_spec("torch") is not None:
             import torch

@@ -26,7 +26,7 @@ dependencies = [
 TORCH = ["torch", "torchvision"]
 VIDEO = ["av>=10.0.0", "imageio[ffmpeg]>=2.23.0"]
 PROC = ["joblib>=1.2.0"]
-DEV = ["pytest", "pytest-cov", "lovely-tensors>=0.1.14", "lovely-numpy>=0.2.8"]
+DEV = ["pytest", "pytest-cov", "lovely-tensors>=0.1.14", "lovely-numpy>=0.2.8", "opencv-python"]
 ALL = ["image_utils[TORCH,VIDEO,PROC,DEV]"]
 
 [project.urls]
