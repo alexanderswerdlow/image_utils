@@ -11,15 +11,22 @@ from functools import partial
 from io import BytesIO
 from math import ceil
 from pathlib import Path
-from typing import Callable, Iterable, Optional, Tuple, Type, Union
+from typing import TYPE_CHECKING, Callable, Iterable, Optional, Tuple, Type, Union, Any
 
 import numpy as np
-import torch
 from einops import rearrange, repeat
 from jaxtyping import Bool, Float, Integer
 from numpy import ndarray
 from PIL import Image
-from torch import Tensor
+
+
+if importlib.util.find_spec("torch") is not None:
+    import torch
+    from torch import Tensor, device # type: ignore
+else:
+    class device:
+        def __init__(self, type: str):
+            self.type = type
 
 if importlib.util.find_spec("image_utils") is not None:
     from image_utils.file_utils import get_date_time_str, load_cached_from_url
@@ -28,11 +35,13 @@ if importlib.util.find_spec("image_utils") is not None:
 if importlib.util.find_spec("imageio") is not None:
     from imageio import v3 as iio
 
-colorize_weights = {}
-ImArr = Union[ndarray, Tensor]  # The actual array itself
-ImArrType = Type[Union[ndarray, Tensor]]  # The object itself is just a type
-ImDtype = Union[torch.dtype, np.dtype]
+if TYPE_CHECKING:
+    from torch import Tensor
+    ImArr = Union[ndarray, Tensor]  # The actual array itself
+    ImArrType = Type[Union[ndarray, Tensor]]  # The object itself is just a type
+    ImDtype = Union[torch.dtype, np.dtype]
 
+colorize_weights = {}
 enable_warnings = os.getenv("IMAGE_UTILS_DISABLE_WARNINGS") is None
 
 class callable_staticmethod(staticmethod):
@@ -105,10 +114,10 @@ class Im:
     default_normalize_mean = [0.4265, 0.4489, 0.4769]
     default_normalize_std = [0.2053, 0.2206, 0.2578]
 
-    def __init__(self, arr: Union["Im", Tensor, Image.Image, ndarray], channel_range: Optional[ChannelRange] = None, **kwargs):
+    def __init__(self, arr: Union["Im", Tensor, Image.Image, ndarray, str, Path], channel_range: Optional[ChannelRange] = None, **kwargs):
         # TODO: Add real URL checking here
         if isinstance(arr, (str, Path)) and Path(arr).exists():
-            arr = Im.open(arr)  # type: ignore
+            arr = Im.open(arr)
         elif isinstance(arr, str):
             arr = Image.open(load_cached_from_url(arr))
 
@@ -119,7 +128,7 @@ class Im:
                     setattr(self, attr, getattr(arr, attr))
             return
 
-        self.device: torch.device
+        self.device: device
         self.arr_type: ImArrType
 
         # To handle things in a unified manner, we choose to always convert PIL Images -> NumPy internally
@@ -130,7 +139,7 @@ class Im:
         self.arr: ImArr = arr
         if isinstance(self.arr, ndarray):
             self.arr_type = ndarray
-            self.device = torch.device("cpu")
+            self.device = device("cpu")
         elif isinstance(self.arr, Tensor):
             self.device = self.arr.device
             self.arr_type = Tensor
@@ -147,6 +156,7 @@ class Im:
 
         # We normalize all arrays to (B, H, W, C) and record their original shape so
         # we can re-transform then when we need to output them
+        self.arr_transform: Callable[[ImArr], ImArr]
         if len(self.arr.shape) == 2:
             self.channel_order = ChannelOrder.HWC
             self.arr_transform = partial(rearrange, pattern="() h w () -> h w")
@@ -158,7 +168,7 @@ class Im:
             extra_dims = self.arr.shape[:-3]
             mapping = {k: v for k, v in zip(string.ascii_uppercase, extra_dims)}
             transform_str = f'({" ".join(sorted(list(mapping.keys())))}) a b c -> {" ".join(sorted(list(mapping.keys())))} a b c'
-            self.arr_transform = partial(rearrange, pattern=transform_str, **mapping)  # lambda x: rearrange(x, transform_str, g)
+            self.arr_transform = partial(rearrange, pattern=transform_str, **mapping)  # type: ignore # lambda x: rearrange(x, transform_str, g)
         else:
             raise ValueError("Must be between 3-5 dims")
 
@@ -232,7 +242,7 @@ class Im:
 
         return custom_decorator
 
-    def _handle_order_transform(self, im, desired_order: ChannelOrder, desired_range: ChannelRange, select_batch=None):
+    def _handle_order_transform(self, im: ImArr, desired_order: ChannelOrder, desired_range: ChannelRange, select_batch=None) -> ImArr:
         if select_batch is not None:
             im = im[select_batch]
         else:
@@ -253,7 +263,7 @@ class Im:
         if self.channel_range != desired_range:
             assert is_ndarray(im) or is_tensor(im)
             if self.channel_range == ChannelRange.FLOAT and desired_range == ChannelRange.UINT8:
-                if self.channels == 1:
+                if self.channels == 1 and im.max() > im.min():
                     im = (im - im.min()) / (im.max() - im.min())
                 im = im * 255
                 if self.channels == 1:
@@ -271,9 +281,9 @@ class Im:
                 raise ValueError("Not supported")
 
             if desired_range == ChannelRange.UINT8:
-                im = im.astype(np.uint8) if is_ndarray(im) else im.to(torch.uint8)
+                im = im.astype(np.uint8) if isinstance(im, ndarray) else im.to(torch.uint8)
             elif desired_range == ChannelRange.FLOAT:
-                im = im.astype(np.float32) if is_ndarray(im) else im.to(torch.float32)
+                im = im.astype(np.float32) if isinstance(im, ndarray) else im.to(torch.float32)
 
         return im
 
@@ -283,6 +293,7 @@ class Im:
             arr = torch_to_numpy(arr)  # type: ignore
 
         arr = self._handle_order_transform(arr, order, range)
+        assert isinstance(arr, ndarray)
         return arr
 
     def get_torch(self, order=ChannelOrder.CHW, range=ChannelRange.FLOAT) -> Tensor:
@@ -291,6 +302,7 @@ class Im:
             arr = torch.from_numpy(arr)
 
         arr = self._handle_order_transform(arr, order, range)
+        assert isinstance(arr, Tensor)
         if self.device is not None:
             arr = arr.to(self.device)
         return arr
@@ -359,11 +371,18 @@ class Im:
     @callable_staticmethod
     def new(h: int, w: int, color=(255, 255, 255)):
         return Im(Image.new("RGB", (w, h), color))
+    
+    @callable_staticmethod
+    def random(h: int = 1080, w: int = 1920) -> Im:
+        try:
+            return Im(Image.open(load_cached_from_url(f"https://unsplash.it/{w}/{h}?random", cache=False)))
+        except:
+            return Im(Image.open(load_cached_from_url(f"https://picsum.photos/{w}/{h}?random", cache=False)))
 
     @_convert_to_datatype(desired_datatype=Tensor, desired_order=ChannelOrder.CHW, desired_range=ChannelRange.FLOAT)
     def resize(self, height: int, width: int, resampling_mode: str = "bilinear"):
-        assert isinstance(self.arr, Tensor)
         from torchvision.transforms.functional import resize, InterpolationMode
+        assert isinstance(self.arr, torch.Tensor)
         arr = resize(self.arr, [height, width], InterpolationMode(resampling_mode), antialias=True)
         arr = self.arr_transform(arr)
         return Im(arr)
@@ -385,7 +404,7 @@ class Im:
         return self.resize(new_height, wsize, **kwargs)
 
     @callable_staticmethod
-    def _save_data(filepath: Path = Path(get_date_time_str()), filetype: str = "png"):
+    def _save_data(filepath: Path = Path(get_date_time_str()), filetype: str = "png") -> Path:
         filepath = Path(filepath)
         if filepath.suffix == "":
             filepath = filepath.with_suffix(f".{filetype}")
@@ -404,11 +423,18 @@ class Im:
         img = utils.make_grid(self.arr, **kwargs)  # type: ignore
         return Im(img)
 
-    def save(self, filepath: Optional[Path] = None, filetype: str = "png", optimize: bool = False, quality: Optional[float] = None, **kwargs):
+    def save(
+        self,
+        filepath: Optional[Path] = None,
+        filetype: str = "png",
+        optimize: bool = False,
+        quality: Optional[float] = None, 
+        **kwargs
+    ) -> Path:
         if filepath is None:
             filepath = Path(get_date_time_str())
 
-        filepath = Im._save_data(filepath, filetype)
+        filepath: Path = Im._save_data(filepath, filetype)
 
         if self.batch_size > 1:
             img = self.get_torch()
@@ -420,6 +446,8 @@ class Im:
         flags = {"optimize": True, "quality": quality if quality else 0.95} if optimize or quality else {}
 
         img.save(filepath, **flags)
+
+        return filepath.resolve()
 
     @_convert_to_datatype(desired_datatype=ndarray, desired_order=ChannelOrder.HWC, desired_range=ChannelRange.UINT8)
     def write_text(
@@ -515,7 +543,7 @@ class Im:
             self.arr = (self.arr - mean) / std
         return self
 
-    def denormalize(self, clamp: Union[bool, tuple[float, float]] = (0, 1.0), **kwargs) -> Im:
+    def denormalize(self, clamp: tuple[float, float] = (0, 1.0), **kwargs) -> Im:
         self, mean, std = self.normalize_setup(**kwargs)
         self.arr = (self.arr * std) + mean
         if isinstance(self.arr, ndarray):
@@ -546,13 +574,21 @@ class Im:
         """Concatenates images horizontally (i.e. left to right)"""
         return concat_variable(concat_horizontal_, *args, **kwargs)
 
-    def save_video(self, filepath: Optional[Path] = None, fps: int = 4, format="mp4"):
+    def save_video(self, filepath: Optional[Path] = None, fps: int = 4, format="mp4", use_pyav: bool = False):
         if filepath is None:
             filepath = Path(get_date_time_str())
-        filepath = Im._save_data(filepath, format)
-        byte_stream = self.encode_video(fps, format)
-        with open(filepath, "wb") as f:
-            f.write(byte_stream.getvalue())
+
+        filepath: Path = Im._save_data(filepath, format)
+
+        if use_pyav:
+            from image_utils.video_utils import write_video
+            self = self._convert(desired_datatype=ndarray, desired_order=ChannelOrder.HWC, desired_range=ChannelRange.UINT8)
+            assert isinstance(self.arr, ndarray)
+            write_video(self.arr, filepath, fps=fps)
+        else:
+            byte_stream = self.encode_video(fps, format)
+            with open(filepath, "wb") as f:
+                f.write(byte_stream.getvalue())
 
     @_convert_to_datatype(desired_datatype=ndarray, desired_order=ChannelOrder.HWC, desired_range=ChannelRange.UINT8)
     def encode_video(self, fps: int, format="mp4") -> BytesIO:
@@ -564,10 +600,10 @@ class Im:
             import imageio
             if format == "webm":
                 writer = imageio.get_writer(
-                    ntp.name, format="webm", codec="libvpx-vp9", pixelformat="yuv420p", output_params=["-lossless", "1"], fps=fps
+                    ntp.name, format="webm", codec="libvpx-vp9", pixelformat="yuv420p", output_params=["-lossless", "1"], fps=fps # type: ignore
                 )
             elif format == "gif":
-                writer = imageio.get_writer(ntp.name, format="GIF", mode="I", duration=(1000 * 1 / fps))
+                writer = imageio.get_writer(ntp.name, format="GIF", mode="I", duration=(1000 * 1 / fps)) # type: ignore
             elif format == "mp4":
                 writer = imageio.get_writer(ntp.name, quality=10, pixelformat="yuv420p", codec="libx264", fps=fps)
             else:
@@ -620,6 +656,29 @@ class Im:
         output = pca(pca_arr, **kwargs)
         output: Tensor = rearrange(output, "(b h w) c -> b h w c", b=b, h=h, w=w)
         return Im(output)
+
+    def show(self):
+        import subprocess
+
+        method = None
+        if subprocess.run(['which', 'imgcat'], capture_output=True).returncode == 0:
+            method = 'iterm2-imgcat'
+        elif subprocess.run(['which', 'xdg-open'], capture_output=True).returncode == 0:
+            method = 'xdg-open'
+
+        if method is not None:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                filename = self.save(Path(temp_dir))
+                if method == 'iterm2-imgcat':
+                    print('\n' * 4)
+                    print('\033[4F')
+                    subprocess.check_call(['imgcat', filename])
+                    print('\033[4B')
+                else:
+                    subprocess.check_call(['xdg-open', filename])
+        else:
+            filename = self.save()
+            print(f'Failed to view image.Image saved to {filename}')
 
     @_convert_to_datatype(desired_datatype=Tensor, desired_order=ChannelOrder.HWC, desired_range=ChannelRange.UINT8)
     def bool_to_rgb(self) -> Im:
@@ -674,7 +733,7 @@ def get_arr_hwc(im: Im):
     return im._handle_order_transform(im.arr, desired_order=ChannelOrder.HWC, desired_range=im.channel_range)
 
 
-def new_like(arr, shape, fill: Optional[tuple[int]] = None):
+def new_like(arr, shape, fill: Optional[tuple[int]] = None) -> ImArr:
     if is_ndarray(arr):
         new_arr = np.zeros_like(arr, shape=shape)
     elif is_tensor(arr):
@@ -694,6 +753,8 @@ def new_like(arr, shape, fill: Optional[tuple[int]] = None):
 
 def concat_along_dim(arr_1: ImArr, arr_2: ImArr, dim: int):
     if is_ndarray(arr_1) and is_ndarray(arr_2):
+        assert isinstance(arr_1, np.ndarray)
+        assert isinstance(arr_2, np.ndarray)
         return np.concatenate((arr_1, arr_2), axis=dim)
     elif is_tensor(arr_1) and is_tensor(arr_2):
         return torch.cat([arr_1, arr_2], dim=dim)  # type: ignore
@@ -701,7 +762,7 @@ def concat_along_dim(arr_1: ImArr, arr_2: ImArr, dim: int):
         raise ValueError("Must be numpy array or torch tensor")
 
 
-def broadcast_arrays(im1_arr, im2_arr):
+def broadcast_arrays(im1_arr, im2_arr) -> Tuple[ImArr, ImArr]:
     """
     Takes [..., H, W, C] and [..., H, W, C] and broadcasts them to the same shape.
 

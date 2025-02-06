@@ -5,3 +5,4 @@ __pycache__
 *.egg-info
 docs/_build/
 docs/generated/
+dist/

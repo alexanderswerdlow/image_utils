@@ -3,8 +3,8 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "image_utils"
-version = "0.0.1"
+name = "image_utilities"
+version = "0.0.2.dev1"
 authors = [{ name="Alexander Swerdlow", email="aswerdlow1@gmail.com" }]
 description = "A utility library for common image and video operations."
 readme = "README.md"
@@ -16,20 +16,18 @@ classifiers = [
 ]
 
 dependencies = [
-    "torch",
-    "torchvision",
-    "opencv-python>=4.5",
-    "numpy>=1.22",
-    "pillow>=9.0.0",
-    "einops>=0.6.0",
+    "numpy>=1.17",
+    "pillow>=8.0.0",
+    "einops>=0.3.0",
     "jaxtyping>=0.2.19"
 ]
 
 [project.optional-dependencies]
+TORCH = ["torch", "torchvision"]
 VIDEO = ["av>=10.0.0", "imageio[ffmpeg]>=2.23.0"]
 PROC = ["joblib>=1.2.0"]
-DEV = ["pytest", "pytest-cov", "lovely-tensors>=0.1.14", "lovely-numpy>=0.2.8"]
-ALL = ["image_utils[VIDEO,PROC,DEV]"]
+DEV = ["pytest", "pytest-cov", "lovely-tensors>=0.1.14", "lovely-numpy>=0.2.8", "opencv-python"]
+ALL = ["image_utils[TORCH,VIDEO,PROC,DEV]"]
 
 [project.urls]
 Homepage = "https://github.com/alexanderswerdlow/image_utils"
@@ -37,3 +35,7 @@ Homepage = "https://github.com/alexanderswerdlow/image_utils"
 [tool.black]
 line-length = 150
 target-version = ['py310']
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/image_utils", "src/im"]
+

@@ -12,11 +12,11 @@ def delete_create_folder(path: Path):
     path.mkdir(parents=True, exist_ok=True)
 
 
-def get_rand_hex():
+def get_rand_hex() -> str:
     return "".join(random.choices(string.ascii_uppercase + string.digits, k=5))
 
 
-def get_date_time_str():
+def get_date_time_str() -> str:
     return datetime.now().strftime("%Y_%m_%d-%H_%M")
 
 
@@ -59,7 +59,7 @@ def get_images(path: Path, recursive: bool = False, allowed_extensions=[".png", 
         yield Im.open(file)
 
 
-def load_cached_from_url(url: str) -> BytesIO:
+def load_cached_from_url(url: str, cache: bool = True) -> BytesIO:
     import hashlib
 
     cache_dir = Path.home() / ".cache" / "image_utils"
@@ -67,7 +67,7 @@ def load_cached_from_url(url: str) -> BytesIO:
     filename = hashlib.md5(url.encode()).hexdigest()
     local_path = cache_dir / filename
 
-    if local_path.exists():
+    if cache and local_path.exists():
         return BytesIO(local_path.read_bytes())
     else:
         image_bytesio = download_file_bytes(url)
