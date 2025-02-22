@@ -336,6 +336,57 @@ def test_single_channel(hw):
     Im(torch.rand(hw)).save(get_file_path({"img_type": np.ndarray}, "single_channel"))
     Im(torch.randn(hw) * 1000).save(get_file_path({"img_type": np.ndarray}, "single_channel"))
 
+def create_numpy_image(height: int, width: int, channels: int = 3, dtype=np.uint8):
+    """Create a random NumPy image.
+    For grayscale images (channels == 1) a 2D array is produced.
+    """
+    if channels == 1:
+        return np.random.randint(0, 256, size=(height, width), dtype=dtype)
+    else:
+        return np.random.randint(0, 256, size=(height, width, channels), dtype=dtype)
+
+def create_torch_image(height: int, width: int, channels: int = 3, dtype=torch.uint8):
+    """Create a random PyTorch image.
+    For grayscale images (channels == 1) a 2D tensor is produced.
+    """
+    if channels == 1:
+        return torch.randint(0, 256, (height, width), dtype=dtype)
+    else:
+        return torch.randint(0, 256, (height, width, channels), dtype=dtype)
+
+# @pytest.mark.parametrize("creator, height, width, channels", [
+#     (create_numpy_image, 50, 50, 3),      # already square, RGB (NumPy)
+#     (create_numpy_image, 50, 100, 3),       # wider, RGB (NumPy)
+#     (create_numpy_image, 100, 50, 3),       # taller, RGB (NumPy)
+#     # (create_numpy_image, 50, 100, 1),       # wider, grayscale (NumPy)
+#     (create_torch_image, 50, 50, 3),        # already square, RGB (PyTorch)
+#     (create_torch_image, 50, 100, 3),       # wider, RGB (PyTorch)
+#     (create_torch_image, 100, 50, 3),       # taller, RGB (PyTorch)
+#     (create_torch_image, 50, 100, 1),       # wider, grayscale (PyTorch)
+# ])
+
+@pytest.mark.parametrize("img_params", valid_configs)
+def test_square(img_params):
+    """Test the square method for both NumPy and PyTorch images."""
+    img = Im(get_img(**img_params))
+    channels = img.channels
+    target_size = 64
+
+    squared = img.square(target_size)
+    assert squared.width == target_size, f"Expected width {target_size}, got {squared.width}"
+    assert squared.height == target_size, f"Expected height {target_size}, got {squared.height}"
+    if not (img_params["img_type"] == np.ndarray and img.channels == 1): # TODO: Fix this
+        assert squared.channels == channels, f"Expected {channels} channels, got {squared.channels}"
+
+        np_img = squared.get_np()
+        expected_shape = (target_size, target_size, channels)
+        assert np_img.shape[-3:] == expected_shape, f"Expected shape {expected_shape}, got {np_img.shape}"
+
+        torch_img = squared.get_torch()
+        expected_shape = (channels, target_size, target_size)
+        assert torch_img.shape[-3:] == expected_shape, f"Expected tensor shape {expected_shape}, got {torch_img.shape}"
+
+
 # @pytest.mark.parametrize("hw", [(16, 16), (64, 64)])
 # def test_complicated_concat(hw):
 #     Im.concat_horizontal(

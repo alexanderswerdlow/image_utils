@@ -403,6 +403,39 @@ class Im:
         wsize = int((float(width) * float(hpercent)))
         return self.resize(new_height, wsize, **kwargs)
 
+    def square(self, size: int) -> Im:
+        """Resize and pad to a square image, preserving aspect ratio"""
+        if self.width == self.height:
+            return self.resize(size, size)
+        else:
+            def add_padding(arr: ImArr, n: int, direction: str = "vertical") -> ImArr:
+                assert direction in ("vertical", "horizontal")
+                if isinstance(arr, np.ndarray):
+                    pad_width = [(0, 0)] * arr.ndim
+                    pad_width[-3 if direction == "vertical" else -2] = (n, n)
+                    return np.pad(arr, pad_width, mode="constant")
+                elif isinstance(arr, torch.Tensor):
+                    if direction == 'vertical':
+                        pad_arr = torch.zeros(*arr.shape[:-3], n, arr.shape[-2], arr.shape[-1], dtype=arr.dtype, device=arr.device)
+                        return torch.cat([pad_arr, arr, pad_arr], dim=-3)
+                    elif direction == 'horizontal':
+                        pad_arr = torch.zeros(*arr.shape[:-3], arr.shape[-3], n, arr.shape[-1], dtype=arr.dtype, device=arr.device)
+                        return torch.cat([pad_arr, arr, pad_arr], dim=-2)
+            
+            if is_ndarray(self.arr):
+                self = Im(self.get_np(ChannelOrder.HWC, ChannelRange.FLOAT))
+            elif is_tensor(self.arr):
+                self = Im(self.get_torch(ChannelOrder.HWC, ChannelRange.FLOAT))
+
+            if self.width > self.height:
+                new_height = (self.width - self.height) // 2
+                self = Im(add_padding(self.arr, new_height, "vertical"))
+            else:
+                new_width = (self.height - self.width) // 2
+                self = Im(add_padding(self.arr, new_width, "horizontal"))
+            
+            return self.resize(size, size)
+
     @callable_staticmethod
     def _save_data(filepath: Path = Path(get_date_time_str()), filetype: str = "png") -> Path:
         filepath = Path(filepath)
