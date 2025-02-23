@@ -493,7 +493,10 @@ class Im:
         font: int = 0,  # cv2.FONT_HERSHEY_SIMPLEX
         relative_font_scale: Optional[float] = None,
     ) -> Im:
-        import cv2
+        try:
+            import cv2
+        except:
+            raise ImportError("OpenCV is required to write text to an image.")
 
         FONT_SCALE = 3e-3 * size
         THICKNESS_SCALE = 2e-3 * thickness

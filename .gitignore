@@ -6,3 +6,4 @@ __pycache__
 docs/_build/
 docs/generated/
 dist/
+uv.lock

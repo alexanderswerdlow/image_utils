@@ -104,3 +104,12 @@ To run all tests, simply run: `pytest`
 To break with pdb on error, use: `pytest --pdb -s`
 
 To run a specific test use: `pytest -k 'test_concat' --pdb -s`
+
+## Local Installation
+
+To install locally in a self-contained environment with [UV](https://docs.astral.sh/uv/):
+
+```
+git clone https://github.com/alexanderswerdlow/image_utils.git
+uv sync --extra video --extra dev --extra cpu
+```
