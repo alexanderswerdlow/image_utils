@@ -17,27 +17,28 @@ if importlib.util.find_spec("torchvision") is not None:
     import torchvision.transforms.functional as T
 
 
-
 def torch_to_numpy(arr: Tensor):
     if arr.dtype == torch.bfloat16:
         return arr.float().cpu().detach().numpy()
     else:
         return arr.cpu().detach().numpy()
-    
-def get_layered_image_from_binary_mask(masks, flip=False, override_colors=None, colormap='gist_rainbow'):
+
+
+def get_layered_image_from_binary_mask(masks, flip=False, override_colors=None, colormap="gist_rainbow"):
     from image_utils.im import torch_to_numpy
+
     if torch.is_tensor(masks):
         masks = torch_to_numpy(masks)
     if flip:
         masks = np.flipud(masks)
 
     masks = masks.astype(np.bool_)
-    
-    nonzero_channels = np.apply_over_axes(np.sum, masks, [0,1]).squeeze(0).squeeze(0) > 0
+
+    nonzero_channels = np.apply_over_axes(np.sum, masks, [0, 1]).squeeze(0).squeeze(0) > 0
     colors = np.zeros((masks.shape[2], 3), dtype=np.uint8)
     if nonzero_channels.sum() > 0:
         colors[nonzero_channels] = list(get_color(nonzero_channels.sum(), colormap=colormap))
-    
+
     img = np.zeros((*masks.shape[:2], 3))
     for i in range(masks.shape[2]):
         img[masks[..., i]] = colors[i]
@@ -74,7 +75,7 @@ def integer_to_color(seg: Union[torch.IntTensor, np.ndarray], num_classes: Optio
 
     if ignore_empty:
         seg -= seg.min()
-        
+
     num_classes = num_classes or seg.max() + 1
     onehot = torch.nn.functional.one_hot(seg, num_classes)
     return onehot_to_color(onehot, ignore_empty=ignore_empty, **kwargs)

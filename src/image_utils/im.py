@@ -22,11 +22,13 @@ from PIL import Image
 
 if importlib.util.find_spec("torch") is not None:
     import torch
-    from torch import Tensor, device # type: ignore
+    from torch import Tensor, device  # type: ignore
 else:
+
     class device:
         def __init__(self, type: str):
             self.type = type
+
 
 if importlib.util.find_spec("image_utils") is not None:
     from image_utils.file_utils import get_date_time_str, load_cached_from_url
@@ -37,6 +39,7 @@ if importlib.util.find_spec("imageio") is not None:
 
 if TYPE_CHECKING:
     from torch import Tensor
+
     ImArr = Union[ndarray, Tensor]  # The actual array itself
     ImArrType = Type[Union[ndarray, Tensor]]  # The object itself is just a type
     ImDtype = Union[torch.dtype, np.dtype]
@@ -44,10 +47,12 @@ if TYPE_CHECKING:
 colorize_weights = {}
 enable_warnings = os.getenv("IMAGE_UTILS_DISABLE_WARNINGS") is None
 
+
 class callable_staticmethod(staticmethod):
     def __call__(self, *args, **kwargs):
         return self.__func__(*args, **kwargs)
-    
+
+
 def warning_guard(message: str):
     if enable_warnings:
         warnings.warn(message, stacklevel=2)
@@ -213,9 +218,7 @@ class Im:
 
         return f"Im of {shape_str}, device: {self.device}"
 
-    def _convert(
-        self, desired_datatype: ImArrType, desired_order: ChannelOrder = ChannelOrder.HWC, desired_range: ChannelRange = ChannelRange.UINT8
-    ) -> Im:
+    def _convert(self, desired_datatype: ImArrType, desired_order: ChannelOrder = ChannelOrder.HWC, desired_range: ChannelRange = ChannelRange.UINT8) -> Im:
         if self.arr_type != desired_datatype or self.channel_order != desired_order or self.channel_range != desired_range:
             # We preserve the original dtype, shape, and device
             orig_transform, orig_device, orig_dtype = self.arr_transform, self.device, self.arr.dtype
@@ -371,7 +374,7 @@ class Im:
     @callable_staticmethod
     def new(h: int, w: int, color=(255, 255, 255)):
         return Im(Image.new("RGB", (w, h), color))
-    
+
     @callable_staticmethod
     def random(h: int = 1080, w: int = 1920) -> Im:
         try:
@@ -382,6 +385,7 @@ class Im:
     @_convert_to_datatype(desired_datatype=Tensor, desired_order=ChannelOrder.CHW, desired_range=ChannelRange.FLOAT)
     def resize(self, height: int, width: int, resampling_mode: str = "bilinear"):
         from torchvision.transforms.functional import resize, InterpolationMode
+
         assert isinstance(self.arr, torch.Tensor)
         arr = resize(self.arr, [height, width], InterpolationMode(resampling_mode), antialias=True)
         arr = self.arr_transform(arr)
@@ -408,6 +412,7 @@ class Im:
         if self.width == self.height:
             return self.resize(size, size)
         else:
+
             def add_padding(arr: ImArr, n: int, direction: str = "vertical") -> ImArr:
                 assert direction in ("vertical", "horizontal")
                 if isinstance(arr, np.ndarray):
@@ -415,13 +420,13 @@ class Im:
                     pad_width[-3 if direction == "vertical" else -2] = (n, n)
                     return np.pad(arr, pad_width, mode="constant")
                 elif isinstance(arr, torch.Tensor):
-                    if direction == 'vertical':
+                    if direction == "vertical":
                         pad_arr = torch.zeros(*arr.shape[:-3], n, arr.shape[-2], arr.shape[-1], dtype=arr.dtype, device=arr.device)
                         return torch.cat([pad_arr, arr, pad_arr], dim=-3)
-                    elif direction == 'horizontal':
+                    elif direction == "horizontal":
                         pad_arr = torch.zeros(*arr.shape[:-3], arr.shape[-3], n, arr.shape[-1], dtype=arr.dtype, device=arr.device)
                         return torch.cat([pad_arr, arr, pad_arr], dim=-2)
-            
+
             if is_ndarray(self.arr):
                 self = Im(self.get_np(ChannelOrder.HWC, ChannelRange.FLOAT))
             elif is_tensor(self.arr):
@@ -433,7 +438,7 @@ class Im:
             else:
                 new_width = (self.height - self.width) // 2
                 self = Im(add_padding(self.arr, new_width, "horizontal"))
-            
+
             return self.resize(size, size)
 
     @callable_staticmethod
@@ -456,14 +461,7 @@ class Im:
         img = utils.make_grid(self.arr, **kwargs)  # type: ignore
         return Im(img)
 
-    def save(
-        self,
-        filepath: Optional[Path] = None,
-        filetype: str = "png",
-        optimize: bool = False,
-        quality: Optional[float] = None, 
-        **kwargs
-    ) -> Path:
+    def save(self, filepath: Optional[Path] = None, filetype: str = "png", optimize: bool = False, quality: Optional[float] = None, **kwargs) -> Path:
         if filepath is None:
             filepath = Path(get_date_time_str())
 
@@ -618,6 +616,7 @@ class Im:
 
         if use_pyav:
             from image_utils.video_utils import write_video
+
             self = self._convert(desired_datatype=ndarray, desired_order=ChannelOrder.HWC, desired_range=ChannelRange.UINT8)
             assert isinstance(self.arr, ndarray)
             write_video(self.arr, filepath, fps=fps)
@@ -634,12 +633,11 @@ class Im:
         # TODO: We shouldn't need to write -> read. An imageio/ffmpeg issue is causing this.
         with tempfile.NamedTemporaryFile(suffix=f".{format}") as ntp:
             import imageio
+
             if format == "webm":
-                writer = imageio.get_writer(
-                    ntp.name, format="webm", codec="libvpx-vp9", pixelformat="yuv420p", output_params=["-lossless", "1"], fps=fps # type: ignore
-                )
+                writer = imageio.get_writer(ntp.name, format="webm", codec="libvpx-vp9", pixelformat="yuv420p", output_params=["-lossless", "1"], fps=fps)  # type: ignore
             elif format == "gif":
-                writer = imageio.get_writer(ntp.name, format="GIF", mode="I", duration=(1000 * 1 / fps)) # type: ignore
+                writer = imageio.get_writer(ntp.name, format="GIF", mode="I", duration=(1000 * 1 / fps))  # type: ignore
             elif format == "mp4":
                 writer = imageio.get_writer(ntp.name, quality=10, pixelformat="yuv420p", codec="libx264", fps=fps)
             else:
@@ -697,24 +695,24 @@ class Im:
         import subprocess
 
         method = None
-        if subprocess.run(['which', 'imgcat'], capture_output=True).returncode == 0:
-            method = 'iterm2-imgcat'
-        elif subprocess.run(['which', 'xdg-open'], capture_output=True).returncode == 0:
-            method = 'xdg-open'
+        if subprocess.run(["which", "imgcat"], capture_output=True).returncode == 0:
+            method = "iterm2-imgcat"
+        elif subprocess.run(["which", "xdg-open"], capture_output=True).returncode == 0:
+            method = "xdg-open"
 
         if method is not None:
             with tempfile.TemporaryDirectory() as temp_dir:
                 filename = self.save(Path(temp_dir))
-                if method == 'iterm2-imgcat':
-                    print('\n' * 4)
-                    print('\033[4F')
-                    subprocess.check_call(['imgcat', filename])
-                    print('\033[4B')
+                if method == "iterm2-imgcat":
+                    print("\n" * 4)
+                    print("\033[4F")
+                    subprocess.check_call(["imgcat", filename])
+                    print("\033[4B")
                 else:
-                    subprocess.check_call(['xdg-open', filename])
+                    subprocess.check_call(["xdg-open", filename])
         else:
             filename = self.save()
-            print(f'Failed to view image.Image saved to {filename}')
+            print(f"Failed to view image.Image saved to {filename}")
 
     @_convert_to_datatype(desired_datatype=Tensor, desired_order=ChannelOrder.HWC, desired_range=ChannelRange.UINT8)
     def bool_to_rgb(self) -> Im:

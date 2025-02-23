@@ -3,6 +3,7 @@ import numpy as np
 import random
 from . import is_tensor, is_ndarray, is_arr
 
+
 def generic_print(self, arr_values):
     assert is_arr(self)
 
@@ -49,15 +50,16 @@ torch.Tensor.__repr__ = lambda self: generic_print(self, normal_repr(self))
 np.set_printoptions(suppress=True, precision=3, threshold=10, edgeitems=2, linewidth=120)
 
 normal_repr_ = np.ndarray.__str__
-if int(np.__version__.split('.')[0]) >= 2:
+if int(np.__version__.split(".")[0]) >= 2:
     np.set_printoptions(override_repr=lambda self: generic_print(np.array(self), normal_repr_(np.array(self))))
 else:
     np.set_string_function(lambda self: generic_print(self, normal_repr_(self)), repr=True)
 
+
 def disable():
     torch.set_printoptions(profile="default")
     torch.Tensor.__repr__ = normal_repr
-    if int(np.__version__.split('.')[0]) >= 2:
+    if int(np.__version__.split(".")[0]) >= 2:
         pass
         # TODO: Currently broken for numpy 2.x
         # np.set_printoptions(formatter={
@@ -66,6 +68,7 @@ def disable():
         # })
     else:
         np.set_string_function(normal_repr_, repr=True)
+
 
 def set_random_seeds():
     torch.manual_seed(0)

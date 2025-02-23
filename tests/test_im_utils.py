@@ -231,6 +231,7 @@ def test_concat(img_params):
     Im.concat_horizontal(*[img.np, img.np[..., : h_ // 2, : h_ // 2, :], img.np[..., :, h_ // 2 :, :]], spacing=5)
     Im.concat_horizontal(*[img.np, img.np[..., :, : h_ // 2, :]], spacing=5)
 
+
 @pytest.mark.parametrize("hw", [(16, 16), (64, 64)])
 def test_concat_broadcast(hw):
     good_cases = [
@@ -261,13 +262,14 @@ def test_concat_broadcast(hw):
     ]
 
     for j in range(2):
-        for i, (im1, im2) in enumerate(error_cases, start=len(good_cases)+1):
+        for i, (im1, im2) in enumerate(error_cases, start=len(good_cases) + 1):
             try:
                 if j == 1:
                     im1, im2 = im1.numpy(), im2.numpy()
                 Im.concat_horizontal(im1, im2)
             except ValueError as e:
                 pass
+
 
 @pytest.mark.parametrize("img_params", valid_configs[:4])
 @pytest.mark.parametrize("format", ["mp4", "gif", "webm"])
@@ -315,11 +317,11 @@ def test_slicing(img_params):
     img = get_img(**img_params)
     img = Im(img)
     h_ = img.np.shape[-3]
-    if img_params.get('hwc_order', True):
+    if img_params.get("hwc_order", True):
         assert np.allclose(img.np[..., : h_ // 2, :10, :], img[..., : h_ // 2, :10, :].np)
         assert torch.allclose(img.torch[..., :, : h_ // 2, :10], img[..., : h_ // 2, :10, :].torch)
     else:
-        assert np.allclose(img.np[..., :, :h_ // 2, :10, :], img[..., :, : h_ // 2, :10].np)
+        assert np.allclose(img.np[..., :, : h_ // 2, :10, :], img[..., :, : h_ // 2, :10].np)
         assert torch.allclose(img.torch[..., :, : h_ // 2, :10], img[..., :, : h_ // 2, :10].torch)
 
 
@@ -336,6 +338,7 @@ def test_single_channel(hw):
     Im(torch.rand(hw)).save(get_file_path({"img_type": np.ndarray}, "single_channel"))
     Im(torch.randn(hw) * 1000).save(get_file_path({"img_type": np.ndarray}, "single_channel"))
 
+
 def create_numpy_image(height: int, width: int, channels: int = 3, dtype=np.uint8):
     """Create a random NumPy image.
     For grayscale images (channels == 1) a 2D array is produced.
@@ -345,6 +348,7 @@ def create_numpy_image(height: int, width: int, channels: int = 3, dtype=np.uint
     else:
         return np.random.randint(0, 256, size=(height, width, channels), dtype=dtype)
 
+
 def create_torch_image(height: int, width: int, channels: int = 3, dtype=torch.uint8):
     """Create a random PyTorch image.
     For grayscale images (channels == 1) a 2D tensor is produced.
@@ -353,6 +357,7 @@ def create_torch_image(height: int, width: int, channels: int = 3, dtype=torch.u
         return torch.randint(0, 256, (height, width), dtype=dtype)
     else:
         return torch.randint(0, 256, (height, width, channels), dtype=dtype)
+
 
 # @pytest.mark.parametrize("creator, height, width, channels", [
 #     (create_numpy_image, 50, 50, 3),      # already square, RGB (NumPy)
@@ -365,6 +370,7 @@ def create_torch_image(height: int, width: int, channels: int = 3, dtype=torch.u
 #     (create_torch_image, 50, 100, 1),       # wider, grayscale (PyTorch)
 # ])
 
+
 @pytest.mark.parametrize("img_params", valid_configs)
 def test_square(img_params):
     """Test the square method for both NumPy and PyTorch images."""
@@ -375,7 +381,7 @@ def test_square(img_params):
     squared = img.square(target_size)
     assert squared.width == target_size, f"Expected width {target_size}, got {squared.width}"
     assert squared.height == target_size, f"Expected height {target_size}, got {squared.height}"
-    if not (img_params["img_type"] == np.ndarray and img.channels == 1): # TODO: Fix this
+    if not (img_params["img_type"] == np.ndarray and img.channels == 1):  # TODO: Fix this
         assert squared.channels == channels, f"Expected {channels} channels, got {squared.channels}"
 
         np_img = squared.get_np()
