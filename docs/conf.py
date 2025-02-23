@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.join(os.path.abspath(".."), "src", "image_utils"))
 # -- Project information -----------------------------------------------------
 
 project = "Image Utils"
-copyright = "2024"
+copyright = "2025"
 author = "Alexander Swerdlow"
 
 

@@ -29,6 +29,10 @@ else:
         def __init__(self, type: str):
             self.type = type
 
+    class Tensor:
+        def __init__(self):
+            pass
+
 
 if importlib.util.find_spec("image_utils") is not None:
     from image_utils.file_utils import get_date_time_str, load_cached_from_url
@@ -218,7 +222,9 @@ class Im:
 
         return f"Im of {shape_str}, device: {self.device}"
 
-    def _convert(self, desired_datatype: ImArrType, desired_order: ChannelOrder = ChannelOrder.HWC, desired_range: ChannelRange = ChannelRange.UINT8) -> Im:
+    def _convert(
+        self, desired_datatype: ImArrType, desired_order: ChannelOrder = ChannelOrder.HWC, desired_range: ChannelRange = ChannelRange.UINT8
+    ) -> Im:
         if self.arr_type != desired_datatype or self.channel_order != desired_order or self.channel_range != desired_range:
             # We preserve the original dtype, shape, and device
             orig_transform, orig_device, orig_dtype = self.arr_transform, self.device, self.arr.dtype
@@ -291,6 +297,7 @@ class Im:
         return im
 
     def get_np(self, order=ChannelOrder.HWC, range=ChannelRange.UINT8) -> ndarray:
+        """Converts the image to a NumPy Array with specified channel order and range."""
         arr = self.arr
         if is_tensor(arr):
             arr = torch_to_numpy(arr)  # type: ignore
@@ -300,6 +307,7 @@ class Im:
         return arr
 
     def get_torch(self, order=ChannelOrder.CHW, range=ChannelRange.FLOAT) -> Tensor:
+        """Converts the image to a PyTorch Tensor with specified channel order and range."""
         arr = self.arr
         if is_ndarray(arr):
             arr = torch.from_numpy(arr)
@@ -311,6 +319,7 @@ class Im:
         return arr
 
     def get_pil(self) -> Union[Image.Image, list[Image.Image]]:
+        """Converts the image to a PIL Image. Returns a list for batched images."""
         if self.batch_size == 1:
             img = self.get_np()
             if img.shape[-1] == 1:
@@ -325,16 +334,23 @@ class Im:
             else:
                 return [Image.fromarray(img[i]) for i in range(img.shape[0])]
 
+    @_convert_to_datatype(desired_datatype=ndarray, desired_order=ChannelOrder.HWC, desired_range=ChannelRange.UINT8)
+    def get_opencv(self):
+        return self.arr
+
     @property
     def copy(self):
+        """Returns a deep copy of the image."""
         return copy.deepcopy(self)
 
     @property
     def height(self):
+        """Returns the height of the image."""
         return self.image_shape[0]
 
     @property
     def width(self):
+        """Returns the width of the image."""
         return self.image_shape[1]
 
     @property
@@ -343,9 +359,7 @@ class Im:
 
     @property
     def channels(self):
-        """
-        Returns number of channels in the image (e.g., 3 for RGB or 1 for BW)
-        """
+        """Returns the number of channels in the image (e.g., 3 for RGB or 1 for BW)"""
         if self.channel_order == ChannelOrder.HWC:
             return self.arr.shape[-1]
         else:
@@ -353,11 +367,13 @@ class Im:
 
     @property
     def range_max(self):
+        """Returns the maximum value of the image range (e.g., 255 for UINT8 or 1.0 for FLOAT)"""
         assert self.channel_range in (ChannelRange.UINT8, ChannelRange.FLOAT)
         return 255 if self.channel_range == ChannelRange.UINT8 else 1.0
 
     @property
-    def image_shape(self):  # returns h,w
+    def image_shape(self):
+        """Returns the height and width of the image as a tuple (H, W)"""
         if self.channel_order == ChannelOrder.HWC:
             return (self.arr.shape[-3], self.arr.shape[-2])
         else:
@@ -365,6 +381,7 @@ class Im:
 
     @callable_staticmethod
     def open(filepath: Path, use_imageio=False) -> Im:
+        """Opens an image from disk and returns an Im object"""
         if use_imageio:
             img = iio.imread(filepath)
         else:
@@ -373,17 +390,20 @@ class Im:
 
     @callable_staticmethod
     def new(h: int, w: int, color=(255, 255, 255)):
+        """Creates a new image with the specified height and width and color"""
         return Im(Image.new("RGB", (w, h), color))
 
     @callable_staticmethod
-    def random(h: int = 1080, w: int = 1920) -> Im:
+    def random(h: int = 1080, w: int = 1920, cache: bool = False) -> Im:
+        """Creates a random image from unsplash or picsum"""
         try:
-            return Im(Image.open(load_cached_from_url(f"https://unsplash.it/{w}/{h}?random", cache=False)))
+            return Im(Image.open(load_cached_from_url(f"https://unsplash.it/{w}/{h}?random", cache=cache)))
         except:
-            return Im(Image.open(load_cached_from_url(f"https://picsum.photos/{w}/{h}?random", cache=False)))
+            return Im(Image.open(load_cached_from_url(f"https://picsum.photos/{w}/{h}?random", cache=cache)))
 
     @_convert_to_datatype(desired_datatype=Tensor, desired_order=ChannelOrder.CHW, desired_range=ChannelRange.FLOAT)
     def resize(self, height: int, width: int, resampling_mode: str = "bilinear"):
+        """Resizes image to a new height/width using the specified resampling mode (default: bilinear)."""
         from torchvision.transforms.functional import resize, InterpolationMode
 
         assert isinstance(self.arr, torch.Tensor)
@@ -392,23 +412,26 @@ class Im:
         return Im(arr)
 
     def scale(self, scale: float, **kwargs) -> Im:
+        """Scales the image by a factor, preserving the aspect ratio."""
         width, height = self.width, self.height
         return self.resize(int(height * scale), int(width * scale), **kwargs)
 
     def scale_to_width(self, new_width: int, **kwargs) -> Im:
+        """Scales the image to desired width, preserving the aspect ratio."""
         width, height = self.width, self.height
         wpercent = new_width / float(width)
         hsize = int((float(height) * float(wpercent)))
         return self.resize(hsize, new_width, **kwargs)
 
     def scale_to_height(self, new_height: int, **kwargs) -> Im:
+        """Scales the image to desired height, preserving the aspect ratio."""
         width, height = self.width, self.height
         hpercent = new_height / float(height)
         wsize = int((float(width) * float(hpercent)))
         return self.resize(new_height, wsize, **kwargs)
 
     def square(self, size: int) -> Im:
-        """Resize and pad to a square image, preserving aspect ratio"""
+        """Returns a square image, resizing and padding while preserving aspect ratio"""
         if self.width == self.height:
             return self.resize(size, size)
         else:
@@ -456,12 +479,18 @@ class Im:
 
     @_convert_to_datatype(desired_datatype=Tensor, desired_order=ChannelOrder.CHW, desired_range=ChannelRange.FLOAT)
     def grid(self, **kwargs) -> Im:
+        """Converts a batched image to a single grid image"""
         from torchvision import utils
 
         img = utils.make_grid(self.arr, **kwargs)  # type: ignore
         return Im(img)
 
     def save(self, filepath: Optional[Path] = None, filetype: str = "png", optimize: bool = False, quality: Optional[float] = None, **kwargs) -> Path:
+        """
+        Saves the image to a file, optionally optimizing and compressing the image.
+        By default, the image is saved to $CWD/outputs with a timestamp as the filename, and a PNG filetype.
+        If the image is batched, the images will be saved as a grid.
+        """
         if filepath is None:
             filepath = Path(get_date_time_str())
 
@@ -491,6 +520,7 @@ class Im:
         font: int = 0,  # cv2.FONT_HERSHEY_SIMPLEX
         relative_font_scale: Optional[float] = None,
     ) -> Im:
+        """Writes text to the image. If the image is batched, the user can specify a list of text strings, otherwise, all images will have the same text. Requires OpenCV."""
         try:
             import cv2
         except:
@@ -523,12 +553,7 @@ class Im:
         return new_im
 
     def add_border(self, border: int, color: Tuple[int, int, int]):
-        """
-        Adds solid color border to all sides of an image
-        Args:
-            border: size in px
-            color: RGB tuple
-        """
+        """Adds solid color border to all sides of an image"""
         imgs = self.pil
         if not isinstance(imgs, Iterable):
             imgs = [imgs]
@@ -541,6 +566,7 @@ class Im:
 
     @_convert_to_datatype(desired_datatype=Tensor, desired_order=ChannelOrder.CHW, desired_range=ChannelRange.FLOAT)
     def crop(self, top: int = 0, bottom: int = 0, left: int = 0, right: int = 0):
+        """Crops the image. The image is sliced as [..., top:bottom, left:right]"""
         arr = self.arr[..., top:bottom, left:right]
         arr = self.arr_transform(arr)
         return Im(arr)
@@ -568,6 +594,7 @@ class Im:
         return self, mean, std
 
     def normalize(self, normalize_min_max: bool = False, **kwargs) -> Im:
+        """Normalizes image using either the current min-max or given a mean & std."""
         if normalize_min_max:
             # TODO: Make this more general
             self = Im(self.get_np(ChannelOrder.HWC, ChannelRange.FLOAT))
@@ -578,6 +605,7 @@ class Im:
         return self
 
     def denormalize(self, clamp: tuple[float, float] = (0, 1.0), **kwargs) -> Im:
+        """De-normalizes image, optionally clamping values to specified range."""
         self, mean, std = self.normalize_setup(**kwargs)
         self.arr = (self.arr * std) + mean
         if isinstance(self.arr, ndarray):
@@ -585,10 +613,6 @@ class Im:
         elif isinstance(self.arr, Tensor):
             self.arr = self.arr.clamp(*clamp) if clamp else self.arr
         return self
-
-    @_convert_to_datatype(desired_datatype=ndarray, desired_order=ChannelOrder.HWC, desired_range=ChannelRange.UINT8)
-    def get_opencv(self):
-        return self.arr
 
     @_convert_to_datatype(desired_datatype=ndarray, desired_order=ChannelOrder.HWC, desired_range=ChannelRange.UINT8)
     def convert_opencv_color(self, color: int):
@@ -609,6 +633,7 @@ class Im:
         return concat_variable(concat_horizontal_, *args, **kwargs)
 
     def save_video(self, filepath: Optional[Path] = None, fps: int = 4, format="mp4", use_pyav: bool = False):
+        """Saves a video to disk. If filepath is not specified, the video will be saved to $CWD/outputs with a timestamp as the filename."""
         if filepath is None:
             filepath = Path(get_date_time_str())
 
@@ -627,12 +652,16 @@ class Im:
 
     @_convert_to_datatype(desired_datatype=ndarray, desired_order=ChannelOrder.HWC, desired_range=ChannelRange.UINT8)
     def encode_video(self, fps: int, format="mp4") -> BytesIO:
+        """Encodes a batched image to a video. Requires ImageIO."""
         assert len(self.arr.shape) == 4, "Video data must be 4D (time, height, width, channels)"
         byte_stream = BytesIO()
 
         # TODO: We shouldn't need to write -> read. An imageio/ffmpeg issue is causing this.
         with tempfile.NamedTemporaryFile(suffix=f".{format}") as ntp:
-            import imageio
+            try:
+                import imageio
+            except ImportError:
+                raise ImportError("ImageIO is required to encode videos. Please install it with `pip install imageio[ffmpeg]`.")
 
             if format == "webm":
                 writer = imageio.get_writer(ntp.name, format="webm", codec="libvpx-vp9", pixelformat="yuv420p", output_params=["-lossless", "1"], fps=fps)  # type: ignore
@@ -654,9 +683,7 @@ class Im:
         return byte_stream
 
     def to(self, device: torch.device):
-        """
-        Move to tensor device. In-place operation.
-        """
+        """Move tensor to device. In-place operation."""
         if isinstance(self.arr, Tensor):
             self.arr = self.arr.to(device)
         else:
@@ -667,6 +694,7 @@ class Im:
 
     @_convert_to_datatype(desired_datatype=Tensor, desired_order=ChannelOrder.CHW, desired_range=ChannelRange.FLOAT)
     def colorize(self) -> Im:
+        """Creates a colorized RGB image from e.g., a feature map with channels > 3."""
         if self.channels not in colorize_weights:
             colorize_weights[self.channels] = torch.randn(3, self.channels, 1, 1)
 
@@ -692,6 +720,7 @@ class Im:
         return Im(output)
 
     def show(self):
+        """Displays the image in the default image viewer (e.g., in the terminal or in ipython)."""
         import subprocess
 
         method = None
@@ -716,6 +745,7 @@ class Im:
 
     @_convert_to_datatype(desired_datatype=Tensor, desired_order=ChannelOrder.HWC, desired_range=ChannelRange.UINT8)
     def bool_to_rgb(self) -> Im:
+        """Converts a boolean array to a RGB image (B / W)."""
         return self
 
     pil = property(get_pil)
@@ -725,6 +755,7 @@ class Im:
 
 
 def concat_variable(concat_func: Callable[..., Im], *args: Im, **kwargs) -> Im:
+    """Helper function to concatenate variable number of images using a specified concatenation type."""
     if len(args) == 1 and isinstance(args[0], Iterable) and not isinstance(args[0], (Im, ndarray, Tensor)):
         args = args[0]  # We allow passing in a single list without prior unpacking
 
@@ -798,7 +829,8 @@ def concat_along_dim(arr_1: ImArr, arr_2: ImArr, dim: int):
 
 def broadcast_arrays(im1_arr, im2_arr) -> Tuple[ImArr, ImArr]:
     """
-    Takes [..., H, W, C] and [..., H, W, C] and broadcasts them to the same shape.
+    Broadcasts two image arrays to compatible shapes for concatenation operations.
+    Specifically, takes [..., H, W, C] and [..., H, W, C] and broadcasts them to the same shape.
 
     TODO: Support broadcasting with different H/W/C. E.g., currently:
     [1, H, W, C] and [H // 2, W, C] fail to broadcast
@@ -838,6 +870,8 @@ def broadcast_arrays(im1_arr, im2_arr) -> Tuple[ImArr, ImArr]:
 
 
 def concat_horizontal_(im1: Im, im2: Im, spacing: int = 0, **kwargs) -> Im:
+    """Concatenates two images horizontally with optional spacing between them."""
+
     # We convert to HWC but allow for tensor/ndarray with different shapes/dtypes
     im1_arr = get_arr_hwc(im1)
     im2_arr = get_arr_hwc(im2)
@@ -863,6 +897,8 @@ def concat_horizontal_(im1: Im, im2: Im, spacing: int = 0, **kwargs) -> Im:
 
 
 def concat_vertical_(im1: Im, im2: Im, spacing: int = 0, **kwargs) -> Im:
+    """Concatenates two images vertically with optional spacing between them."""
+
     # We convert to HWC but allow for tensor/ndarray with different shapes/dtypes
     im1_arr = get_arr_hwc(im1)
     im2_arr = get_arr_hwc(im2)

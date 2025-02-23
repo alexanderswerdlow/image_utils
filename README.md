@@ -5,9 +5,9 @@
 ![Supported python versions](https://raw.githubusercontent.com/alexanderswerdlow/image_utils/master/docs/python_badge.svg)
 
 
-Are you tired of having to constantly switch between NumPy arrays, PyTorch Tensors, and PIL images? Simply wrap your NumPy array, PyTorch Tensor, or PIL image with `Im()` and let it handle conversions between formats.
+Are you tired of having to constantly switch between NumPy arrays, PyTorch Tensors, and PIL images? Simply wrap your NumPy array, PyTorch Tensor, or PIL image with `Im()` and let it handle conversions between shapes, formats, etc.
 
-For example, we can replace this:
+We can replace this:
 ```
 numpy_img = (torch.rand(10, 3, 256, 256).permute(0, 2, 3, 1).detach().float().cpu().numpy() * 255).astype(np.uint8)
 Image.fromarray(numpy_img[0]).save('output.png')
@@ -18,26 +18,27 @@ With this:
 Im(torch.rand(10, 3, 256, 256)).save()
 ```
 
-The powerful part is not that this works for this specific input shape/dtype/range combination, but [almost] any combination.
+The powerful part is not that this works for a specific input shape/dtype/range, but [almost] any combination.
 
 ## Features
 
 - Supports NumPy arrays, PyTorch Tensors, and PIL Images
-- Handles arbitrary shapes `[..., H, W, C] or [..., C, H, W]` and preserves the input shape, batching all necessary transformations.
-- Handles all common data types `[Float, Integer, Boolean]`, and Ranges `[0, 1], [0, 255]`
-- Vertical/Horizontal concatenation of images with automatic padding, device conversion, and even batching
-- Writing text on images
-- Video encoding `[mp4, gif]` of a sequence of images
-- Image normalization, resizing, and much more!
+- _All_ operations support batching over arbitrary shapes `[..., H, W, C] or [..., C, H, W]` which are preserved through (most) transformations.
+- Handles all common data types `[Float, Integer, Boolean]`, and Ranges `[0, 1], [0, 255]` with automatic detection (e.g., no `.permute()` is required).
+- Vertical/Horizontal concatenation of images of varying shapes with automatic padding, device conversion, etc.
+- Many common transformations unified across formats (resize / crop / square / scale / normalize / denormalize).
+- Video support (encodes a batched sequence to `[mp4, gif]`).
+- Minimal dependencies (primarily just NumPy & PIL).
+- Writing text on images, and much more!
 
 ## Installation
 
-_Warning_: The library is currently in alpha and the API is subject to change. If you use this library as part of another application, consider pinning to a specific commit, adding as a submodule, or even just taking the `src/image_utils/im.py` file as it works standalone!
+_Warning_: The library is currently in alpha and the API is subject to change. If you use this library as part of another application, consider pinning to a specific commit. Moreover, you can copy the `src/image_utils/im.py` file as it works standalone!
 
-This package is not currently on PyPI. To install, use the git url:
+To install from PyPI:
 
 ```
-pip install git+https://github.com/alexanderswerdlow/image_utils.git
+pip install image_utilities
 ```
 
 ## Usage
@@ -49,15 +50,37 @@ from image_utils import Im
 
 img = np.random.randint(0, 256, (2, 10, 256, 256, 3), np.uint8)
 img = Im(img)
-img = img.write_text("Hello World!") # Writes the text on all 20 images
-img = img.scale(2) # Scales image, preserving aspect ratio. Use resize(), scale_to_width(), or scale_to_width() for more control.
+img = img.write_text("Hello World!")
+img = img.scale(2) 
 img = img.crop(200, 300, 0, 100)
 
-# The Im class supports regular array slicing and unpacking! Here we concatenate the two [10, ...] into a single [10, ...] sequence of images
-img = Im.concat_horizontal(*img, spacing=15) # Concatenation even works with varying shapes with automatic padding!
-img.save() # Batched images are saved as a grid by default. Uses a timestamp for the name and PNG format by default. 
-img.save_video() # We now have a 10 frame video!
+img = Im.concat_horizontal(*img, spacing=15)
+img.save()
+img.save_video(fps=2) # We now have a 10 frame video!
 ```
+
+This does the following:
+
+- Initializes 20 (2 x 10) random images
+- Writes "Hello World!" on all images
+- Scales all images, preserving aspect ratio. (Use resize(), scale_to_width(), or scale_to_width() for more control.)
+- Crops all images
+- Takes [2, 10, ...] and horizontally concats along the first dim to get an output of [10, ...] (where each image has ~2x the height). This is an example of the unpacking operator (on the Im object!), but it also supports regular array slicing notation (e.g., Im()[:1])
+- Saves the batch of [10, ...] to an image (viewed as a grid by default). Uses a timestamp for the name and PNG format by default.
+- Saves the batch of [10, ...] as a video. Uses a timestamp for the name and MP4 format by default.
+
+For additional usage examples, see the [test suite](tests/test_im_utils.py).
+
+## When you should use image_utils
+
+- If you need to quickly visualize and work with images/videos.
+- If your code frequently switches between NumPy, PyTorch, and PIL.
+
+## When you shouldn't use image_utils
+
+- You shouldn't use `image_utils` in a pre-processing pipeline. There is no guarantee that a given operation [e.g., resize] will have exact consistency between versions.
+
+- If you are concerned with performance, you also shouldn't use `image_utils` as it focuses on flexibility over performance. We focus on unified operations which sometimes requires internal conversions which could otherwise be avoided.
 
 ## Extra Goodies
 
@@ -87,29 +110,28 @@ Instead of only seeing the array contents, we can now view the shape, dtype, dev
 
 If you want a dedicated library for this, check out [lovely-tensors](https://github.com/xl0/lovely-tensors)!
 
-## When you should use image_utils
-
-If you need to quickly visualize and work with images in a flexible way and aren't concerned with maximum efficiency
-
-## When you shouldn't use image_utils
-
-Currently, you shouldn't use image_utils in your pre-processing pipeline for a machine learning model. There is no guarantee that a given operation [e.g., resize] will have bit-perfect consistency between versions. Furthermore, image_utils focuses on flexibility over a wide-range of formats which in practice means frequent internal conversions and thus incurs additional overhead.
-
 ## Tests
 
 *Note*: If you want to know more about how to use specific methods or which formats we test on, check out `tests/test_im_utils.py`.
 
-To run all tests, simply run: `pytest`
+- To run all tests, simply run: `pytest`
+- To break with pdb on error, use: `pytest --pdb -s`
+- To run a specific test use: `pytest -k 'test_concat' --pdb -s`
 
-To break with pdb on error, use: `pytest --pdb -s`
-
-To run a specific test use: `pytest -k 'test_concat' --pdb -s`
-
-## Local Installation
+## Development
+### Local Installation
 
 To install locally in a self-contained environment with [UV](https://docs.astral.sh/uv/):
 
 ```
 git clone https://github.com/alexanderswerdlow/image_utils.git
 uv sync --extra video --extra dev --extra cpu
+```
+
+### Build Docs
+
+```
+uv pip install myst_parser sphinx sphinx-rtd-theme
+cd docs
+make html
 ```

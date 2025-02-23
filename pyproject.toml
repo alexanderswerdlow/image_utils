@@ -71,5 +71,5 @@ build-backend = "hatchling.build"
 packages = ["src/image_utils", "src/im"]
 
 [tool.black]
-line-length = 200
+line-length = 150
 target-version = ['py310']
