@@ -339,36 +339,16 @@ def test_single_channel(hw):
     Im(torch.randn(hw) * 1000).save(get_file_path({"img_type": np.ndarray}, "single_channel"))
 
 
-def create_numpy_image(height: int, width: int, channels: int = 3, dtype=np.uint8):
-    """Create a random NumPy image.
-    For grayscale images (channels == 1) a 2D array is produced.
-    """
-    if channels == 1:
-        return np.random.randint(0, 256, size=(height, width), dtype=dtype)
-    else:
-        return np.random.randint(0, 256, size=(height, width, channels), dtype=dtype)
-
-
-def create_torch_image(height: int, width: int, channels: int = 3, dtype=torch.uint8):
-    """Create a random PyTorch image.
-    For grayscale images (channels == 1) a 2D tensor is produced.
-    """
-    if channels == 1:
-        return torch.randint(0, 256, (height, width), dtype=dtype)
-    else:
-        return torch.randint(0, 256, (height, width, channels), dtype=dtype)
-
-
-# @pytest.mark.parametrize("creator, height, width, channels", [
-#     (create_numpy_image, 50, 50, 3),      # already square, RGB (NumPy)
-#     (create_numpy_image, 50, 100, 3),       # wider, RGB (NumPy)
-#     (create_numpy_image, 100, 50, 3),       # taller, RGB (NumPy)
-#     # (create_numpy_image, 50, 100, 1),       # wider, grayscale (NumPy)
-#     (create_torch_image, 50, 50, 3),        # already square, RGB (PyTorch)
-#     (create_torch_image, 50, 100, 3),       # wider, RGB (PyTorch)
-#     (create_torch_image, 100, 50, 3),       # taller, RGB (PyTorch)
-#     (create_torch_image, 50, 100, 1),       # wider, grayscale (PyTorch)
-# ])
+@pytest.mark.parametrize(
+    "img_params",
+    [
+        {"img_type": Image.Image},
+    ],
+)
+def test_pil_list(img_params):
+    img = Im([get_img(**img_params) for _ in range(5)])
+    assert img.batch_size == 5
+    img.copy.save(get_file_path(img_params, "save"))
 
 
 @pytest.mark.parametrize("img_params", valid_configs)

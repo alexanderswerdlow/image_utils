@@ -11,14 +11,13 @@ from functools import partial
 from io import BytesIO
 from math import ceil
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Iterable, Optional, Tuple, Type, Union, Any
+from typing import TYPE_CHECKING, Callable, Iterable, Optional, Tuple, Type, Union
 
 import numpy as np
 from einops import rearrange, repeat
 from jaxtyping import Bool, Float, Integer
 from numpy import ndarray
 from PIL import Image
-
 
 if importlib.util.find_spec("torch") is not None:
     import torch
@@ -29,7 +28,7 @@ else:
         def __init__(self, type: str):
             self.type = type
 
-    class Tensor:
+    class Tensor:  # type: ignore
         def __init__(self):
             pass
 
@@ -55,6 +54,14 @@ enable_warnings = os.getenv("IMAGE_UTILS_DISABLE_WARNINGS") is None
 class callable_staticmethod(staticmethod):
     def __call__(self, *args, **kwargs):
         return self.__func__(*args, **kwargs)
+
+
+class staticproperty:
+    def __init__(self, fget):
+        self.fget = fget
+
+    def __get__(self, instance, owner):
+        return self.fget(owner)
 
 
 def warning_guard(message: str):
@@ -123,7 +130,12 @@ class Im:
     default_normalize_mean = [0.4265, 0.4489, 0.4769]
     default_normalize_std = [0.2053, 0.2206, 0.2578]
 
-    def __init__(self, arr: Union["Im", Tensor, Image.Image, ndarray, str, Path], channel_range: Optional[ChannelRange] = None, **kwargs):
+    def __init__(
+        self,
+        arr: Union["Im", Tensor, Image.Image, list[Image.Image], tuple[Image.Image], ndarray, str, Path],
+        channel_range: Optional[ChannelRange] = None,
+        **kwargs,
+    ):
         # TODO: Add real URL checking here
         if isinstance(arr, (str, Path)) and Path(arr).exists():
             arr = Im.open(arr)
@@ -143,6 +155,8 @@ class Im:
         # To handle things in a unified manner, we choose to always convert PIL Images -> NumPy internally
         if isinstance(arr, Image.Image):
             arr = np.array(arr)
+        elif (isinstance(arr, list) or isinstance(arr, tuple)) and all(isinstance(a, Image.Image) for a in arr):
+            arr = np.stack([np.array(a) for a in arr])
 
         assert isinstance(arr, (ndarray, Tensor)), f"arr must be numpy array, pillow image, or torch tensor, not {type(arr)}"
         self.arr: ImArr = arr
@@ -389,22 +403,27 @@ class Im:
         return Im(img)
 
     @callable_staticmethod
-    def new(h: int, w: int, color=(255, 255, 255)):
+    def new(h: int = 256, w: int = 256, color=(255, 255, 255)):
         """Creates a new image with the specified height and width and color"""
         return Im(Image.new("RGB", (w, h), color))
 
     @callable_staticmethod
-    def random(h: int = 1080, w: int = 1920, cache: bool = False) -> Im:
+    def random(h: int = 256, w: int = 256, cache: bool = False) -> Im:
         """Creates a random image from unsplash or picsum"""
         try:
             return Im(Image.open(load_cached_from_url(f"https://unsplash.it/{w}/{h}?random", cache=cache)))
         except:
             return Im(Image.open(load_cached_from_url(f"https://picsum.photos/{w}/{h}?random", cache=cache)))
 
+    @staticproperty
+    def ex(self):
+        """Returns an example image."""
+        return self.new()
+
     @_convert_to_datatype(desired_datatype=Tensor, desired_order=ChannelOrder.CHW, desired_range=ChannelRange.FLOAT)
     def resize(self, height: int, width: int, resampling_mode: str = "bilinear"):
         """Resizes image to a new height/width using the specified resampling mode (default: bilinear)."""
-        from torchvision.transforms.functional import resize, InterpolationMode
+        from torchvision.transforms.functional import InterpolationMode, resize
 
         assert isinstance(self.arr, torch.Tensor)
         arr = resize(self.arr, [height, width], InterpolationMode(resampling_mode), antialias=True)
