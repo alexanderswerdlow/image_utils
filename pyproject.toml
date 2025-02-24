@@ -1,6 +1,6 @@
 [project]
 name = "image_utilities"
-version = "0.0.2.dev1"
+version = "0.0.3"
 authors = [{ name="Alexander Swerdlow", email="aswerdlow1@gmail.com" }]
 description = "A utility library for common image and video operations."
 readme = "README.md"
